@@ -3,6 +3,9 @@
 //
 // All rights reserved.
 //
+// The code in this file is in part based on code in the DM-VIO (<http://vision.in.tum.de/dm-vio>).
+//
+//
 // This software is licensed under the terms of the BSD-2-Clause-License with
 // no commercial use allowed, the full terms of which are made available
 // in the LICENSE file. No license in patents is granted.
