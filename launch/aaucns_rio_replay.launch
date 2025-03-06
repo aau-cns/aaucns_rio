@@ -1,0 +1,3 @@
+<launch>
+  <node name="rio_replay" type="aaucns_rio_replay_node" pkg="aaucns_rio" output="screen"/>
+</launch>

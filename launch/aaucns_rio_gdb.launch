@@ -1,0 +1,3 @@
+<launch>
+  <node launch-prefix="gdb -ex run --args" name="rio" type="aaucns_rio_node" pkg="aaucns_rio" output="screen"/>
+</launch>
