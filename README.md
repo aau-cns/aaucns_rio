@@ -23,7 +23,7 @@ Users are expected to have Eigen, PCL and GTSAM installed system-wide.
 # Cite
 
 If you use this software please cite:
-
+```
 @INPROCEEDINGS{10801945,
   author={Michalczyk, Jan and Quell, Julius and Steidle, Florian and Müller, Marcus G. and Weiss, Stephan},
   booktitle={2024 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)}, 
@@ -33,3 +33,4 @@ If you use this software please cite:
   number={},
   pages={3364-3370},
   doi={10.1109/IROS58592.2024.10801945}}
+```
