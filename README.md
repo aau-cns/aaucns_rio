@@ -41,5 +41,6 @@ If you use this software please cite:
 # Notes
 Radar data is assumed to be 4D point clouds. By default, the current version uses the `XYZI` point cloud type from `PCL`, in
 which `data[0-2]` are the `xyz` coordinates of points and `data[3]` is the Doppler velocity, `intensity` is the reflection intensity.
+If you use `TI AWR1843BOOST` sensor then you can use this -> `https://github.com/janmichl/ti_mmwave_rospkg` fork of the driver which outputs consistent pointclouds. 
 
 It is planned to interface the software with a dedicated radar `PCL` type.
