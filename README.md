@@ -1,8 +1,8 @@
 # aaucns_rio
-MultiState-EKF Radar-Inertial Odometry
+This software contains an implementation of Radar-Inertial Odometry using multi-state EKF and factor graphs.
 
 # Compilation
-`catkin_make --force-cmake -DCMAKE_BUILD_TYPE={Release, Debug}`
+`catkin_make --force-cmake -DCMAKE_BUILD_TYPE={Release, Debug}`.
 
 `--force-cmake` is there only to force copying the yaml config file into the
 `~/.ros` folder. If you copy it manually you do not need that option.
@@ -10,7 +10,8 @@ MultiState-EKF Radar-Inertial Odometry
 # Use
 The software can be used either as a ROS node or to replay ROS bag files.
 For the latter, modify the file in `nodes/rio_(fg)_replay_node.cpp` by giving the
-bag filename (file must be in `~/.ros`) and modify the topic names.
+bag filename (file must be in `~/.ros`) and modify the topic names. Acronym `fg` stands for "factor graph".
+The default version uses EKF as the estimation backbone.
 
 Within `src/rio_(fg)_replay.cpp` you might also have to modify the message types.
 
@@ -37,6 +38,11 @@ If you use this software please cite:
   pages={3364-3370},
   doi={10.1109/IROS58592.2024.10801945}}
 ```
+
+# Example dataset
+
+You can download [here](https://cns-data.aau.at/rio_dataset/awr_6.bag) and [here](https://cns-data.aau.at/rio_dataset/awr_7.bag) example bagfiles to use with the rio.
+Remember to place them in your `~/.ros` folder.
 
 # Notes
 Radar data is assumed to be 4D point clouds. By default, the current version uses the `XYZI` point cloud type from `PCL`, in
