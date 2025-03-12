@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "aaucns_rio/debug.h"
+#include "aaucns_rio/pcl_conversions_rio.h"
 #include "aaucns_rio/trailpoint.h"
 
 namespace aaucns_rio
@@ -98,16 +99,16 @@ inline void fixEigenvalues(Eigen::MatrixXd& cov_mat)
     }
 }
 
-inline pcl::PointCloud<pcl::PointXYZI> applyNearRangeFiltering(
-    const pcl::PointCloud<pcl::PointXYZI>& current_pc2,
+inline pcl::PointCloud<RadarPointCloudType> applyNearRangeFiltering(
+    const pcl::PointCloud<RadarPointCloudType>& current_pc2,
     const double threshold_in_meters_x, const double threshold_in_meters_y)
 {
-    pcl::PointCloud<pcl::PointXYZI> filtered_current_pc2 = current_pc2;
+    pcl::PointCloud<RadarPointCloudType> filtered_current_pc2 = current_pc2;
     for (std::size_t i = 0; i < filtered_current_pc2.width; ++i)
     {
-        if ((filtered_current_pc2.points[i].data[0] < threshold_in_meters_x) &&
-            (filtered_current_pc2.points[i].data[1] < threshold_in_meters_y) &&
-            (filtered_current_pc2.points[i].data[1] > -threshold_in_meters_y))
+        if ((filtered_current_pc2.points[i].x < threshold_in_meters_x) &&
+            (filtered_current_pc2.points[i].y < threshold_in_meters_y) &&
+            (filtered_current_pc2.points[i].y > -threshold_in_meters_y))
         {
             filtered_current_pc2.points[i].intensity = 0;
         }
@@ -115,14 +116,14 @@ inline pcl::PointCloud<pcl::PointXYZI> applyNearRangeFiltering(
     return filtered_current_pc2;
 }
 inline std::vector<TrailPoint> convertPC2ToTrailPoints(
-    const pcl::PointCloud<pcl::PointXYZI>& pc2)
+    const pcl::PointCloud<RadarPointCloudType>& pc2)
 {
     std::vector<TrailPoint> trailpoints;
     for (int i = 0; i < pc2.width; ++i)
     {
         TrailPoint trailpoint;
-        trailpoint.most_recent_coordinates << pc2.points[i].data[0],
-            pc2.points[i].data[1], pc2.points[i].data[2];
+        trailpoint.most_recent_coordinates << pc2.points[i].x, pc2.points[i].y,
+            pc2.points[i].z;
         trailpoint.intensity = pc2.points[i].intensity;
         trailpoint.is_active = false;
         trailpoint.is_persistent = false;
@@ -132,13 +133,13 @@ inline std::vector<TrailPoint> convertPC2ToTrailPoints(
 }
 
 inline Eigen::MatrixXd convertPC2ToEigenMatrix(
-    const pcl::PointCloud<pcl::PointXYZI>& pc2)
+    const pcl::PointCloud<RadarPointCloudType>& pc2)
 {
     Eigen::MatrixXd pc2_as_matrix = Eigen::MatrixXd::Zero(pc2.width, 3);
     for (int i = 0; i < pc2_as_matrix.rows(); ++i)
     {
-        pc2_as_matrix.row(i) << pc2.points[i].data[0], pc2.points[i].data[1],
-            pc2.points[i].data[2];
+        pc2_as_matrix.row(i) << pc2.points[i].x, pc2.points[i].y,
+            pc2.points[i].z;
     }
     return pc2_as_matrix;
 }
@@ -223,16 +224,6 @@ template <typename Derived, typename TPointType>
 void vector3dToPoint(const Eigen::MatrixBase<Derived>& vec, TPointType& point)
 {
     EIGEN_STATIC_ASSERT_VECTOR_SPECIFIC_SIZE(Derived, 3);
-    point.data[0] = vec[0];
-    point.data[1] = vec[1];
-    point.data[2] = vec[2];
-}
-
-template <typename Derived>
-void vector3dToPoint(const Eigen::MatrixBase<Derived>& vec,
-                     geometry_msgs::Point& point)
-{
-    EIGEN_STATIC_ASSERT_VECTOR_SPECIFIC_SIZE(Derived, 3);
     point.x = vec[0];
     point.y = vec[1];
     point.z = vec[2];
@@ -252,7 +243,7 @@ template <typename TPointType>
 Eigen::Vector3d pointTo3dEigenVector(const TPointType& point)
 {
     Eigen::Vector3d vector;
-    vector << point.data[0], point.data[1], point.data[2];
+    vector << point.x, point.y, point.z;
     return vector;
 }
 
@@ -319,8 +310,8 @@ bool checkForNumeric(const t& vec, int size, const std::string& info)
     return true;
 }
 
-inline pcl::PointCloud<pcl::PointXYZI> applyPyramidFiltering(
-    const pcl::PointCloud<pcl::PointXYZI>& pc2)
+inline pcl::PointCloud<RadarPointCloudType> applyPyramidFiltering(
+    const pcl::PointCloud<RadarPointCloudType>& pc2)
 {
     // 60 degrees
     const Eigen::Vector3d up_elevation_limit_n(-0.7660444, 0, 0.6427876);
@@ -329,7 +320,7 @@ inline pcl::PointCloud<pcl::PointXYZI> applyPyramidFiltering(
     const Eigen::Vector3d left_azimuth_limit_n(-0.7660444, 0.6427876, 0);
     const Eigen::Vector3d right_azimuth_limit_n(-0.7660444, -0.6427876, 0);
 
-    pcl::PointCloud<pcl::PointXYZI> filtered_pc2 = pc2;
+    pcl::PointCloud<RadarPointCloudType> filtered_pc2 = pc2;
 
     for (int i = 0; i < filtered_pc2.width; ++i)
     {
@@ -347,11 +338,11 @@ inline pcl::PointCloud<pcl::PointXYZI> applyPyramidFiltering(
     return filtered_pc2;
 }
 
-inline pcl::PointCloud<pcl::PointXYZI> applyClusteringOfPoints(
-    const pcl::PointCloud<pcl::PointXYZI>& pc2,
+inline pcl::PointCloud<RadarPointCloudType> applyClusteringOfPoints(
+    const pcl::PointCloud<RadarPointCloudType>& pc2,
     const double distance_threshold = 1.0, const int number_threshold = 4)
 {
-    pcl::PointCloud<pcl::PointXYZI> filtered_pc2 = pc2;
+    pcl::PointCloud<RadarPointCloudType> filtered_pc2 = pc2;
     for (int i = 0; i < filtered_pc2.width; ++i)
     {
         const Eigen::Vector3d a =
@@ -379,11 +370,11 @@ inline pcl::PointCloud<pcl::PointXYZI> applyClusteringOfPoints(
     return filtered_pc2;
 }
 
-inline pcl::PointCloud<pcl::PointXYZI> applyStdDevFiltering(
-    const pcl::PointCloud<pcl::PointXYZI>& pc2,
+inline pcl::PointCloud<RadarPointCloudType> applyStdDevFiltering(
+    const pcl::PointCloud<RadarPointCloudType>& pc2,
     const double distance_threshold = 1.0, const double std_dev_threshold = 0.6)
 {
-    pcl::PointCloud<pcl::PointXYZI> filtered_pc2 = pc2;
+    pcl::PointCloud<RadarPointCloudType> filtered_pc2 = pc2;
     for (int i = 0; i < filtered_pc2.width; ++i)
     {
         const Eigen::Vector3d a =

@@ -213,18 +213,17 @@ class Trail
         }
     }
 
-    void initialize(const pcl::PointCloud<pcl::PointXYZI>& pc2)
+    void initialize(const pcl::PointCloud<RadarPointCloudType>& pc2)
     {
         // Initialization routine called only once from the radar callback in
         // order to to initialize the trail.
-        const pcl::PointCloud<pcl::PointXYZI> filtered_pc2 =
+        const pcl::PointCloud<RadarPointCloudType> filtered_pc2 =
             util::applyNearRangeFiltering(pc2, 0.2, 0.15);
         for (int i = 0; i < filtered_pc2.width; ++i)
         {
             TrailPoint trail_point;
-            trail_point.most_recent_coordinates
-                << filtered_pc2.points[i].data[0],
-                filtered_pc2.points[i].data[1], filtered_pc2.points[i].data[2];
+            trail_point.most_recent_coordinates << filtered_pc2.points[i].x,
+                filtered_pc2.points[i].y, filtered_pc2.points[i].z;
             trail_point.is_active = true;
             trail_point.is_persistent = false;
             trail_point.intensity = filtered_pc2.points[i].intensity;

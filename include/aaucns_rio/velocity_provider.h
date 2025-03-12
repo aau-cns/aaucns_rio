@@ -12,11 +12,13 @@
 #ifndef _VELOCITY_PROVIDER_H_
 #define _VELOCITY_PROVIDER_H_
 
-#include <aaucns_rio/debug.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
 #include <Eigen/Dense>
+
+#include "aaucns_rio/debug.h"
+#include "aaucns_rio/pcl_conversions_rio.h"
 
 namespace aaucns_rio
 {
@@ -30,7 +32,7 @@ class VelocityProvider
 
     VelocityProvider() = default;
     static Eigen::MatrixXd getPointsAndVelocities(
-        const pcl::PointCloud<pcl::PointXYZI>& current_pc2,
+        const pcl::PointCloud<RadarPointCloudType>& current_pc2,
         debug::Logger& logger);
 
    private:

@@ -19,10 +19,10 @@
 namespace aaucns_rio
 {
 Eigen::MatrixXd VelocityProvider::getPointsAndVelocities(
-    const pcl::PointCloud<pcl::PointXYZI>& current_pc2, debug::Logger& logger)
+    const pcl::PointCloud<RadarPointCloudType>& current_pc2,
+    debug::Logger& logger)
 {
-    const pcl::PointCloud<pcl::PointXYZI> filtered_current_pc2 =
-
+    const pcl::PointCloud<RadarPointCloudType> filtered_current_pc2 =
         util::applyPyramidFiltering(
             util::applyNearRangeFiltering(current_pc2, 0.1, 0.1));
 
@@ -36,10 +36,10 @@ Eigen::MatrixXd VelocityProvider::getPointsAndVelocities(
             velocities_and_points.conservativeResize(
                 n_points, kNPointAndVelocityDimension);
             velocities_and_points.row(n_points - 1)
-                << -filtered_current_pc2.points[i].data[3],
-                filtered_current_pc2.points[i].data[0],
-                filtered_current_pc2.points[i].data[1],
-                filtered_current_pc2.points[i].data[2];
+                << -filtered_current_pc2.points[i].doppler,
+                filtered_current_pc2.points[i].x,
+                filtered_current_pc2.points[i].y,
+                filtered_current_pc2.points[i].z;
         }
     }
     runRansac(velocities_and_points);

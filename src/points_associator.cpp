@@ -61,7 +61,7 @@ PointsAssociator::~PointsAssociator()
 
 void PointsAssociator::writeFeaturesPositionsToFile(
     const Features& features,
-    const pcl::PointCloud<pcl::PointXYZI>& current_pointcloud,
+    const pcl::PointCloud<RadarPointCloudType>& current_pointcloud,
     const Trail& trail, const int index)
 {
     if (dump_features_)
@@ -427,7 +427,7 @@ bool PointsAssociator::searchForMatchingFeatures(
 }
 
 bool PointsAssociator::calculateFeaturesFromTrail(
-    const pcl::PointCloud<pcl::PointXYZI>& current_pointcloud,
+    const pcl::PointCloud<RadarPointCloudType>& current_pointcloud,
     State& current_state, const Parameters& parameters, Trail& trail,
     Features& features)
 {
@@ -435,8 +435,7 @@ bool PointsAssociator::calculateFeaturesFromTrail(
     trail.appendPersistentFeaturesToTrail(current_state.persistent_features_);
     trail.setHistoryTrailPointsToInactive();
 
-    const pcl::PointCloud<pcl::PointXYZI> filtered_current_pointcloud =
-
+    const pcl::PointCloud<RadarPointCloudType> filtered_current_pointcloud =
         util::applyPyramidFiltering(
             util::applyNearRangeFiltering(current_pointcloud, 0.1, 0.1));
 

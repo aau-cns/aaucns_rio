@@ -164,6 +164,7 @@ add_library(${PROJECT_NAME}_rio STATIC
   src/state_updater.cpp
   src/velocity_provider.cpp
   src/constants.cpp
+  src/pcl_conversions_rio.cpp
   # fg
   src/fg/rio_fg.cpp
   src/fg/imu_measurement.cpp

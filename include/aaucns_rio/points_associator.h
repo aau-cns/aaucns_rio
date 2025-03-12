@@ -22,6 +22,7 @@
 #include "aaucns_rio/config.h"
 #include "aaucns_rio/features.h"
 #include "aaucns_rio/parameters.h"
+#include "aaucns_rio/pcl_conversions_rio.h"
 #include "aaucns_rio/state.h"
 #include "aaucns_rio/trail.h"
 
@@ -33,21 +34,21 @@ class PointsAssociator
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     PointsAssociator(const bool dump_features);
     bool calculateFeaturesPositions(
-        const pcl::PointCloud<pcl::PointXYZI> &current_pointcloud,
+        const pcl::PointCloud<RadarPointCloudType> &current_pointcloud,
         const State &closest_to_measurement_state,
-        const CircularBuffer<pcl::PointCloud<pcl::PointXYZI>,
+        const CircularBuffer<pcl::PointCloud<RadarPointCloudType>,
                              Config::kMaxPastElements> &past_pointclouds,
         const Parameters &parameters, Features &features);
 
     bool calculateFeaturesFromTrail(
-        const pcl::PointCloud<pcl::PointXYZI> &current_pointcloud,
+        const pcl::PointCloud<RadarPointCloudType> &current_pointcloud,
         State &current_state, const Parameters &parameters, Trail &trail,
         Features &features);
 
     ~PointsAssociator();
 
-    static pcl::PointCloud<pcl::PointXYZI> applyNearRangeFiltering(
-        const pcl::PointCloud<pcl::PointXYZI> &current_pc2,
+    static pcl::PointCloud<RadarPointCloudType> applyNearRangeFiltering(
+        const pcl::PointCloud<RadarPointCloudType> &current_pc2,
         const double threshold_in_meters_x, const double threshold_in_meters_y);
 
    private:
@@ -56,7 +57,7 @@ class PointsAssociator
 
     void writeFeaturesPositionsToFile(
         const Features &features,
-        const pcl::PointCloud<pcl::PointXYZI> &current_pointcloud,
+        const pcl::PointCloud<RadarPointCloudType> &current_pointcloud,
         const Trail &transformed_past_pointcloud, const int index);
 
     Eigen::MatrixXd calculateSimilarityMatrix(

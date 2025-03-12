@@ -101,8 +101,11 @@ void RIOFg::PC2Callback(const sensor_msgs::PointCloud2ConstPtr& msg)
         return;
     }
 
-    pcl::PointCloud<pcl::PointXYZI> current_pc2;
-    pcl::fromROSMsg(*msg, current_pc2);
+    pcl::PointCloud<RadarPointCloudType> current_pc2;
+    if (!rosPCLMsgToRadarPCL(*msg, current_pc2))
+    {
+        return;
+    }
 
     const double current_pc2_timestamp_s = msg->header.stamp.toSec();
     if (hasPC2CallbackBeenCalledEnoughTimes())
