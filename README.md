@@ -43,3 +43,7 @@ If you use this software please cite:
 
 You can download [here](https://cns-data.aau.at/rio_dataset/awr_6.bag) and [here](https://cns-data.aau.at/rio_dataset/awr_7.bag) example bagfiles to use with the rio.
 Remember to place them in your `~/.ros` folder.
+
+# Future work
+
+It is planned to provide a docker container with the code.
