@@ -18,7 +18,7 @@ Within `src/rio_(fg)_replay.cpp` you might also have to modify the message types
 Then, run the software using one of the launch files in the `launch/` folder.
 
 RIO estimator must be configured through a yaml config file. An example is in `config/` folder.
-The software reads this config from the `~/.ros` folder (or your alternative ROS runtine folder if you changed it). 
+The software reads this config from the `~/.ros` folder (or your alternative ROS runtine folder if you changed it).
 
 # Dependencies
 
@@ -30,8 +30,8 @@ If you use this software please cite:
 ```
 @INPROCEEDINGS{10801945,
   author={Michalczyk, Jan and Quell, Julius and Steidle, Florian and Müller, Marcus G. and Weiss, Stephan},
-  booktitle={2024 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)}, 
-  title={Tightly-Coupled Factor Graph Formulation For Radar-Inertial Odometry}, 
+  booktitle={2024 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+  title={Tightly-Coupled Factor Graph Formulation For Radar-Inertial Odometry},
   year={2024},
   volume={},
   number={},
@@ -43,6 +43,10 @@ If you use this software please cite:
 
 You can download [here](https://cns-data.aau.at/rio_dataset/awr_6.bag) and [here](https://cns-data.aau.at/rio_dataset/awr_7.bag) example bagfiles to use with the rio.
 Remember to place them in your `~/.ros` folder.
+
+# Parameters
+
+In the file `config/config.yaml` there are several parameters to control the behavior of the estimator.
 
 # Future work
 
