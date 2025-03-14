@@ -47,6 +47,7 @@ Remember to place them in your `~/.ros` folder.
 # Parameters
 
 In the file `config/config.yaml` there are several parameters to control the behavior of the estimator.
+Some parameters require at the moment the code to be recompiled. They are in the `aaucns_rio/include/config.h` file.
 
 # Future work
 
