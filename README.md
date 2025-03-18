@@ -24,11 +24,11 @@ The software reads this config from the `~/.ros` folder (or your alternative ROS
 
 Users are expected to have Eigen, PCL and GTSAM installed system-wide.
 
-# Cite
+# Cite (BibTeX)
 
 If you use this software please cite:
 ```
-@INPROCEEDINGS{10801945,
+@INPROCEEDINGS{Michalczyk2024aaucns_rio,
   author={Michalczyk, Jan and Quell, Julius and Steidle, Florian and Müller, Marcus G. and Weiss, Stephan},
   booktitle={2024 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
   title={Tightly-Coupled Factor Graph Formulation For Radar-Inertial Odometry},
