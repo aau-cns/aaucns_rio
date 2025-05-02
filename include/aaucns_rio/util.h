@@ -327,11 +327,11 @@ inline pcl::PointCloud<RadarPointCloudType> applyPyramidFiltering(
         const Eigen::Vector3d point =
             util::pointTo3dEigenVector(filtered_pc2.points[i]);
         if ((left_azimuth_limit_n.transpose() * point > 0) ||
-            (right_azimuth_limit_n.transpose() * point > 0)/* ||
+            (right_azimuth_limit_n.transpose() * point > 0) ||
             (up_elevation_limit_n.transpose() * point > 0) ||
-            (down_elevation_limit_n.transpose() * point > 0)*/)
+            (down_elevation_limit_n.transpose() * point > 0))
         {
-            filtered_pc2.points[i].intensity = 0;
+            // filtered_pc2.points[i].intensity = 0;
         }
     }
 

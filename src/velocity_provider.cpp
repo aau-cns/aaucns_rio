@@ -42,7 +42,7 @@ Eigen::MatrixXd VelocityProvider::getPointsAndVelocities(
                 filtered_current_pc2.points[i].z;
         }
     }
-    runRansac(velocities_and_points);
+    // runRansac(velocities_and_points);
     return velocities_and_points;
 }
 

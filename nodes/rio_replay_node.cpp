@@ -34,13 +34,13 @@ int main(int argc, char **argv)
         {"state", "/aaucns_rio_state"},
         {"pose", "/pose"},
         // Input.
-        {"imu", "/mavros/imu/data_raw"},
+        {"imu", "/vectornav_node/uncomp_imu"},
         {"gt_pose", "/twins_cns4/vrpn_client/raw_pose"},
-        {"pc2", "/ti_mmwave/radar_scan_pcl"}};
+        {"pc2", "/radar/cloud"}};
     // Make sure the bagfile is inside ~/.ros folder wherefrom the binary is
     // executed.
-    const std::string input_bagfile = "awr_6.bag";
-    aaucns_rio::RIOReplay rio_replay("config.yaml", topics_and_topic_names,
+    const std::string input_bagfile = "fog_filled_uni_corridor.bag";
+    aaucns_rio::RIOReplay rio_replay("ntnu_config.yaml", topics_and_topic_names,
                                      input_bagfile, nh);
     rio_replay.run();
 }
