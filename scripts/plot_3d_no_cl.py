@@ -25,7 +25,7 @@ from numpy import genfromtxt
 
 def main():
     bags_path = "../bags/"
-    bags = [bags_path + "replayed_fog_filled_uni_corridor.bag"]
+    bags = [bags_path + "replayed_1.bag"]
     norm_of_whole_dist_maes = []
     final_drifts_percent = []
     total_travelled_dists = []
