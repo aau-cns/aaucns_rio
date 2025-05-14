@@ -24,7 +24,7 @@ Eigen::MatrixXd VelocityProvider::getPointsAndVelocities(
 {
     const pcl::PointCloud<RadarPointCloudType> filtered_current_pc2 =
         util::applyPyramidFiltering(
-            util::applyNearRangeFiltering(current_pc2, 0.1, 0.1));
+            util::applyNearRangeFiltering(current_pc2, 0.2, 0.2));
 
     Eigen::MatrixXd velocities_and_points;
     int n_points = 0;

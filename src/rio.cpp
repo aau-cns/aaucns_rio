@@ -251,7 +251,7 @@ void RIO::initializeCovariance()
     P.setZero();
 
     P.block<State::kNImuState, State::kNImuState>(0, 0) =
-        Eigen::MatrixXd::Constant(State::kNImuState, State::kNImuState, 10e-3);
+        Eigen::MatrixXd::Constant(State::kNImuState, State::kNImuState, 10e-4);
 
     const Eigen::Matrix<double, Config::kMaxPastElements * 6, 1>
         past_poses_cov_init =
@@ -260,9 +260,13 @@ void RIO::initializeCovariance()
 
     Eigen::Matrix<double, State::kNBaseMultiWindowState, 1> imu_cov_init;
 
-    imu_cov_init << 0.0011, 0.0011, 0.0011, 0.0011, 0.0011, 0.0011, 0.0011,
-        0.01, 0.01, 0.01, 0.01, 0.01, 0.5, 0.5, 0.5,
-        /*calib*/ 0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001;
+    // imu_cov_init << 0.0011, 0.0011, 0.0011, 0.0011, 0.0011, 0.0011, 0.0011,
+    //    0.01, 0.01, 0.01, 0.01, 0.01, 0.5, 0.5, 0.5,
+    //    /*calib*/ 0.001, 0.001, 0.001, 0.001, 0.001, 0.001;
+
+    imu_cov_init << 0.0001, 0.0001, 0.0001, 0.0001, 0.0001, 0.0001, 0.0001,
+        0.0001, 0.0001, 0.01, 0.01, 0.01, 0.5, 0.5, 0.5,
+        /*calib*/ 0.0001, 0.0001, 0.0001, 0.0001, 0.0001, 0.0001;
 
     Eigen::Matrix<double, State::kNAugmentedState, 1> diagonal;
     diagonal << imu_cov_init, past_poses_cov_init;

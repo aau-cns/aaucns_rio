@@ -331,7 +331,7 @@ inline pcl::PointCloud<RadarPointCloudType> applyPyramidFiltering(
             (up_elevation_limit_n.transpose() * point > 0) ||
             (down_elevation_limit_n.transpose() * point > 0))
         {
-            // filtered_pc2.points[i].intensity = 0;
+            filtered_pc2.points[i].intensity = 0;
         }
     }
 

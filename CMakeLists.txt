@@ -139,7 +139,7 @@ include_directories(SYSTEM "${CONFIG-YAML_DIR}/include/")
 # Copy the config.yaml file into .ros folder. From that
 # the executable nodes are run.
 set(CONFIG-YAML_CONFIG_DIR "${PROJECT_SOURCE_DIR}/config")
-set(REF_FILENAME "${CONFIG-YAML_CONFIG_DIR}/config.yaml")
+set(REF_FILENAME "${CONFIG-YAML_CONFIG_DIR}/ntnu_config.yaml")
 file(COPY ${REF_FILENAME} DESTINATION $ENV{HOME}/.ros)
 
 ## Specify additional locations of header files

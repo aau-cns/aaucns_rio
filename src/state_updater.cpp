@@ -261,8 +261,8 @@ void StateUpdater::prepareMatricesForUpdate(
     Features& features, Eigen::MatrixXd& H, Eigen::MatrixXd& R,
     Eigen::MatrixXd& r)
 {
-    constexpr double kChiSquare1DoFThresholdHigh = 5.02;
-    constexpr double kChiSquare1DoFThresholdLow = 0.0;
+    constexpr double kChiSquare1DoFThresholdHigh = 3.02;
+    constexpr double kChiSquare1DoFThresholdLow = 0.000982069;
     const double s_zp = parameters.noise_meas1_ * parameters.noise_meas1_;
     int H_row_index = 0;
     for (int j = 0; j < Config::kMaxPastElements; ++j)
