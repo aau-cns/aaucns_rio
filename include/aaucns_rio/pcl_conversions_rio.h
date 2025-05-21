@@ -18,11 +18,23 @@ struct RadarPointCloudType
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
+struct RadarPointCloudNTNUType
+{
+    PCL_ADD_POINT4D;  // position in [m]
+    float intensity;  // CFAR cell to side noise ratio in [dB]
+    float velocity;   // Doppler velocity in [m/s]
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+};
+
 bool rosPCLMsgToRadarPCL(const sensor_msgs::PointCloud2& ros_msg_pcl,
                          pcl::PointCloud<RadarPointCloudType>& radar_pcl);
 
 void xyziToRadarPCL(const pcl::PointCloud<pcl::PointXYZI>& pcl_xyzi,
                     pcl::PointCloud<RadarPointCloudType>& radar_pcl);
+
+void NTNUToRadarPCL(
+    const pcl::PointCloud<RadarPointCloudNTNUType>& ntnu_point_cloud,
+    pcl::PointCloud<RadarPointCloudType>& radar_pcl);
 
 }  // namespace aaucns_rio
 
