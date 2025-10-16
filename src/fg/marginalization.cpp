@@ -3,7 +3,8 @@
 //
 // All rights reserved.
 //
-// The code in this file is in part based on code in the DM-VIO (<http://vision.in.tum.de/dm-vio>).
+// The code in this file is in part based on code in the DM-VIO
+// (<http://vision.in.tum.de/dm-vio>).
 //
 // This software is licensed under the terms of the BSD-2-Clause-License with
 // no commercial use allowed, the full terms of which are made available
@@ -76,7 +77,13 @@ gtsam::FastVector<gtsam::Key> Marginalization::sortKeys(
     for (int i = 0; i < x.size(); ++i)
     {
         nav_states_sorted.push_back(x[i]);
+    }
+    for (int i = 0; i < v.size(); ++i)
+    {
         nav_states_sorted.push_back(v[i]);
+    }
+    for (int i = 0; i < b.size(); ++i)
+    {
         nav_states_sorted.push_back(b[i]);
     }
 
