@@ -24,8 +24,8 @@ b_ax: 0
 b_ay: 0
 b_az: 0
 # IMU noise parameters.
-noise_acc: 0.0083
-noise_accbias: 0.00083
+noise_acc: 0.038
+noise_accbias: 0.0038
 noise_gyr: 0.0013
 noise_gyrbias: 0.00013
 noise_qwv: 0.0

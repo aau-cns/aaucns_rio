@@ -171,7 +171,7 @@ class RadarDistanceFactorFactory
                     .finished());
         // 0.0001
         gtsam::noiseModel::mEstimator::DCS::shared_ptr huber_loss(
-            new gtsam::noiseModel::mEstimator::DCS(0.0001));
+            new gtsam::noiseModel::mEstimator::DCS(0.1));
         gtsam::noiseModel::Robust::shared_ptr distance_robust_noise(
             new gtsam::noiseModel::Robust(huber_loss, distance_factor_noise));
 

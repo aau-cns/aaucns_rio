@@ -136,7 +136,7 @@ void RIOFg::PC2Callback(const sensor_msgs::PointCloud2ConstPtr& msg)
                  << parameters_.noise_meas3_ * parameters_.noise_meas3_)
                     .finished());
         gtsam::noiseModel::mEstimator::DCS::shared_ptr cauchy_loss(
-            new gtsam::noiseModel::mEstimator::DCS(4.0));
+            new gtsam::noiseModel::mEstimator::DCS(2.0));
         gtsam::noiseModel::Robust::shared_ptr velocity_robust_noise(
             new gtsam::noiseModel::Robust(cauchy_loss,
                                           radial_velocity_factor_noise));
