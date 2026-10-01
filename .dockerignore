@@ -1,0 +1,9 @@
+.git
+docker
+!docker/patches
+!docker/patches/**
+bags
+build
+devel
+install
+*.bag
