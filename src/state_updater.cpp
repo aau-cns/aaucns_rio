@@ -633,6 +633,24 @@ Eigen::MatrixXd StateUpdater::getJacobianForSingleFeature(
                                        util::getSkewSymmetricMat(to_skew_3) +
                                        util::getSkewSymmetricMat(to_skew_4) +
                                        util::getSkewSymmetricMat(to_skew_5);
+    // The five terms above reduce exactly to [h(0)]x, which is only the
+    // derivative contribution from q_ri's OUTER occurrence (the leading
+    // R_ri^-1 coefficient). q_ri also appears a second, NESTED time inside
+    // R_past*(R_ri*z+p_ri) (the local observation is projected into world
+    // frame via the past clone using the SAME calibration rotation) -- that
+    // occurrence's contribution, -R_ri^-1*R^-1*R_past*R_ri*[z]x, was missing
+    // entirely. (Does not apply to the persistent-feature or velocity
+    // Jacobians: there, q_ri appears only once, as the outer coefficient, so
+    // [h(0)]x is the complete answer for those.)
+    const Eigen::Matrix<double, 3, 3> q_ri_inner_term =
+        closest_to_measurement_state.q_ri_.conjugate().toRotationMatrix() *
+        closest_to_measurement_state.q_.conjugate().toRotationMatrix() *
+        closest_to_measurement_state.past_orientations_[index]
+            .toRotationMatrix() *
+        closest_to_measurement_state.q_ri_.toRotationMatrix();
+    const Eigen::Vector3d local_observation = single_matched_feature.head(3);
+    H_not_reduced.block<3, 3>(0, 18) -=
+        q_ri_inner_term * util::getSkewSymmetricMat(local_observation);
     // H(0, 7)
     H_not_reduced.block<3, 3>(0, State::kNBaseMultiWindowState + index * 6) =
         closest_to_measurement_state.q_ri_.conjugate().toRotationMatrix() *

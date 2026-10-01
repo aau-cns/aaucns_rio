@@ -107,6 +107,7 @@ class State
     void toPoseMsg(geometry_msgs::PoseWithCovarianceStampedPtr pose);
     void toPoseNoCovMsg(geometry_msgs::PoseStampedPtr pose);
     void acceptPersistentFeature(const TrailPoint& trailpoint,
+                                 const TrailPoint::CoordType& local_coordinates,
                                  const Parameters& parameters);
     std::vector<std::size_t> removePersistentFeaturesAndUpdateCovariance();
 };

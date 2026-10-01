@@ -249,9 +249,13 @@ void RIO::initializeCovariance()
 {
     Eigen::Matrix<double, State::kNAugmentedState, State::kNAugmentedState> P;
     P.setZero();
-
-    P.block<State::kNImuState, State::kNImuState>(0, 0) =
-        Eigen::MatrixXd::Constant(State::kNImuState, State::kNImuState, 10e-3);
+    // (Previously this block was filled via
+    // `Eigen::MatrixXd::Constant(kNImuState, kNImuState, 10e-3)`, which sets
+    // every OFF-diagonal entry to 0.01 too, not just the diagonal -- the
+    // `P.diagonal() = diagonal` call below only overwrites the diagonal, so
+    // that left a spurious ~40% correlation between unrelated error states
+    // (e.g. position vs. accel bias) at initialization. P is already zeroed
+    // above; only the diagonal needs setting, done below.)
 
     const Eigen::Matrix<double, Config::kMaxPastElements * 6, 1>
         past_poses_cov_init =

@@ -152,13 +152,22 @@ std::vector<std::size_t> State::removePersistentFeaturesAndUpdateCovariance()
 }
 
 void State::acceptPersistentFeature(const TrailPoint& trailpoint,
+                                    const TrailPoint::CoordType& local_coordinates,
                                     const Parameters& parameters)
 {
     persistent_features_.push_back(trailpoint);
 
     // Update covariance matrix after adding a persistent feature.
     // Terms (for states p, q) of the Jacobian of the transformation function of
-    // a pf from local to global.
+    // a pf from local to global. This Jacobian is for
+    // g(p, q) = p + q * (q_ri * z_local + p_ri), so it must use the
+    // observation in the LOCAL (radar) frame (`local_coordinates`), not
+    // `trailpoint.most_recent_coordinates`, which the caller has already
+    // overwritten with the world-frame point before this call -- using the
+    // world-frame value here previously fed an already-rotated-and-translated
+    // point back through the local-to-body transform, corrupting the
+    // orientation block (and everything correlated with it) by an amount that
+    // grows with distance from the trajectory origin.
     Eigen::MatrixXd H_rr_pf(3, kNAugmentedState);
 
     H_rr_pf.setZero();
@@ -167,7 +176,7 @@ void State::acceptPersistentFeature(const TrailPoint& trailpoint,
         -q_.toRotationMatrix() *
         util::getSkewSymmetricMat(
             q_ri_.toRotationMatrix() *
-                trailpoint.most_recent_coordinates.transpose() +
+                local_coordinates.transpose() +
             p_ri_);
     // Term for pf itself.
     Eigen::MatrixXd H_pi_pf(3, 3);

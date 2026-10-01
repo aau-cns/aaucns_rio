@@ -196,6 +196,12 @@ class Trail
             {
                 trail_[i].is_persistent = true;
                 trail_[i].id = id_manager_.getFreeId();
+                // Keep the local (radar-frame) observation for the Jacobian
+                // used to initialize the persistent feature's covariance --
+                // it must be the pre-conversion value, not the world-frame
+                // point assigned below.
+                const TrailPoint::CoordType local_coordinates =
+                    trail_[i].most_recent_coordinates;
                 // Initialize the persistent feature in the global frame.
                 trail_[i].most_recent_coordinates =
                     current_updated_state.q_.toRotationMatrix() *
@@ -205,8 +211,8 @@ class Trail
                                  .eval() +
                          current_updated_state.p_ri_) +
                     current_updated_state.p_;
-                current_updated_state.acceptPersistentFeature(trail_[i],
-                                                              parameters);
+                current_updated_state.acceptPersistentFeature(
+                    trail_[i], local_coordinates, parameters);
                 trail_.erase(trail_.begin() + i);
                 --i;
             }
