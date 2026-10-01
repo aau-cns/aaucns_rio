@@ -18,6 +18,7 @@
 #include <gtsam/linear/NoiseModel.h>
 #include <gtsam/navigation/ImuBias.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
+#include <gtsam/nonlinear/NoiseModelFactorN.h>
 #include <gtsam/slam/BetweenFactor.h>
 
 #include <Eigen/Dense>
@@ -31,7 +32,7 @@
 namespace aaucns_rio
 {
 class RadarDistanceFactor
-    : public gtsam::NoiseModelFactor2<gtsam::Pose3, gtsam::Pose3>
+    : public gtsam::NoiseModelFactorN<gtsam::Pose3, gtsam::Pose3>
 {
     gtsam::Pose3 radar_to_imu_transform_;
     Eigen::Matrix<double, 6, 1> matched_pair_at_past_pose_;
@@ -43,7 +44,7 @@ class RadarDistanceFactor
         const gtsam::Pose3& radar_to_imu_transform,
         // head is past, tail is current.
         const Eigen::Matrix<double, 1, 6>& matched_pair_at_past_pose)
-        : gtsam::NoiseModelFactor2<gtsam::Pose3, gtsam::Pose3>(model, i, j),
+        : gtsam::NoiseModelFactorN<gtsam::Pose3, gtsam::Pose3>(model, i, j),
           radar_to_imu_transform_(radar_to_imu_transform),
           matched_pair_at_past_pose_(matched_pair_at_past_pose.transpose())
     {
@@ -135,13 +136,17 @@ class RadarDistanceFactor
             evaluateDistanceMeasurementModelAndGetJacobian(p_past, p_current,
                                                            jacobian);
 
+        // NOTE: The jacobian w.r.t. position is derived for a world-frame
+        // position perturbation (EKF error state). GTSAM Pose3 retracts the
+        // translation in the body frame (t + R * dt), so the translation
+        // blocks have to be right-multiplied by the pose rotation.
         if (H1)
             (*H1) = (gtsam::Matrix(1, 6) << jacobian.block(0, 18, 1, 3),
-                     jacobian.block(0, 15, 1, 3))
+                     jacobian.block(0, 15, 1, 3) * p_past.rotation().matrix())
                         .finished();
         if (H2)
             (*H2) = (gtsam::Matrix(1, 6) << jacobian.block(0, 6, 1, 3),
-                     jacobian.block(0, 0, 1, 3))
+                     jacobian.block(0, 0, 1, 3) * p_current.rotation().matrix())
                         .finished();
 
         const double measured_distance =

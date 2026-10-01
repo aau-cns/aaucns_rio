@@ -122,7 +122,8 @@ gtsam::FastVector<gtsam::Key> Marginalization::decrementNavStatesKeys(
 gtsam::NonlinearFactorGraph Marginalization::marginalizeOut(
     const gtsam::NonlinearFactorGraph& graph,
     const gtsam::Values& values_after_shift, const gtsam::Values& solution,
-    const gtsam::FastVector<gtsam::Key>& keysToMarginalize)
+    const gtsam::FastVector<gtsam::Key>& keysToMarginalize,
+    const gtsam::NonlinearFactorGraph& extra_factors)
 {
     gtsam::NonlinearFactorGraph marginalizedOutGraph;
 
@@ -130,7 +131,8 @@ gtsam::NonlinearFactorGraph Marginalization::marginalizeOut(
     gtsam::FastSet<gtsam::Key> connectedKeys;
 
     extractKeysToMarginalize(graph, marginalizedOutGraph,
-                             setOfKeysToMarginalize, connectedKeys);
+                             setOfKeysToMarginalize, connectedKeys,
+                             extra_factors);
 
     gtsam::GaussianFactorGraph::shared_ptr linearizedFactorsToMarginalize =
         marginalizedOutGraph.linearize(solution);
@@ -208,7 +210,8 @@ void Marginalization::extractKeysToMarginalize(
     const gtsam::NonlinearFactorGraph& graph,
     gtsam::NonlinearFactorGraph& marginalizedOutGraph,
     gtsam::FastSet<gtsam::Key>& setOfKeysToMarginalize,
-    gtsam::FastSet<gtsam::Key>& connectedKeys)
+    gtsam::FastSet<gtsam::Key>& connectedKeys,
+    const gtsam::NonlinearFactorGraph& extra_factors)
 {
     for (size_t i = 0; i < graph.size(); i++)
     {
@@ -233,6 +236,32 @@ void Marginalization::extractKeysToMarginalize(
             // Add factor which has keys to marginalize in the graph.
             marginalizedOutGraph.add(factor);
         }
+    }
+    // Factors which do not touch the marginalized keys but whose information
+    // would otherwise be lost (their data leaves the horizon). They are
+    // folded into the prior on their (connected) keys.
+    for (size_t i = 0; i < extra_factors.size(); i++)
+    {
+        const gtsam::NonlinearFactor::shared_ptr& factor = extra_factors.at(i);
+        bool already_included = false;
+        for (size_t j = 0; j < marginalizedOutGraph.size(); j++)
+        {
+            if (marginalizedOutGraph.at(j) == factor)
+            {
+                already_included = true;
+                break;
+            }
+        }
+        if (already_included)
+        {
+            continue;
+        }
+        gtsam::FastSet<gtsam::Key> set_of_factor_keys(factor->keys());
+        std::set_difference(
+            set_of_factor_keys.begin(), set_of_factor_keys.end(),
+            setOfKeysToMarginalize.begin(), setOfKeysToMarginalize.end(),
+            std::inserter(connectedKeys, connectedKeys.begin()));
+        marginalizedOutGraph.add(factor);
     }
 }
 

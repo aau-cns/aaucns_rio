@@ -88,10 +88,12 @@ RIOFg::~RIOFg(){};
 void RIOFg::setupSubscribers(const std::string& pc2_topic,
                              const std::string& imu_topic, ros::NodeHandle& nh)
 {
+    // Queue sizes > 1 so that no IMU samples (100+ Hz) or scans are dropped
+    // while a (comparatively slow) graph optimization is running.
     pc2_sub_ = nh.subscribe<sensor_msgs::PointCloud2>(
-        pc2_topic, 1, &RIOFg::PC2Callback, this);
-    imu_sub_ =
-        nh.subscribe<sensor_msgs::Imu>(imu_topic, 1, &RIOFg::IMUCallback, this);
+        pc2_topic, 10, &RIOFg::PC2Callback, this);
+    imu_sub_ = nh.subscribe<sensor_msgs::Imu>(imu_topic, 1000,
+                                              &RIOFg::IMUCallback, this);
 }
 
 void RIOFg::PC2Callback(const sensor_msgs::PointCloud2ConstPtr& msg)
@@ -100,6 +102,32 @@ void RIOFg::PC2Callback(const sensor_msgs::PointCloud2ConstPtr& msg)
     {
         return;
     }
+    // A scan is only processed once IMU measurements up to its timestamp
+    // are available. Otherwise the preintegration would silently stop short
+    // of the scan time (the missing IMU interval would never be integrated)
+    // which makes the IMU factors inconsistent with the radar factors.
+    pending_pc2_.push_back(msg);
+    while (pending_pc2_.size() > kMaxPendingPC2)
+    {
+        pending_pc2_.pop_front();
+    }
+    processPendingPC2();
+}
+
+void RIOFg::processPendingPC2()
+{
+    while (!pending_pc2_.empty() && imu_measurements_.size() > 0 &&
+           imu_measurements_[imu_measurements_.size() - 1].timestamp_s_ >=
+               pending_pc2_.front()->header.stamp.toSec())
+    {
+        const sensor_msgs::PointCloud2ConstPtr msg = pending_pc2_.front();
+        pending_pc2_.pop_front();
+        processPC2(msg);
+    }
+}
+
+void RIOFg::processPC2(const sensor_msgs::PointCloud2ConstPtr& msg)
+{
 
     pcl::PointCloud<RadarPointCloudType> current_pc2;
     if (!rosPCLMsgToRadarPCL(*msg, current_pc2))
@@ -110,6 +138,7 @@ void RIOFg::PC2Callback(const sensor_msgs::PointCloud2ConstPtr& msg)
     const double current_pc2_timestamp_s = msg->header.stamp.toSec();
     if (hasPC2CallbackBeenCalledEnoughTimes())
     {
+        oldest_slot_factors_.resize(0);
         // Build data to construct graph and values from.
         std::shared_ptr<gtsam::PreintegratedCombinedMeasurements>
             imu_integrator = preintegrateIMUMeasurements(
@@ -200,7 +229,16 @@ void RIOFg::PC2Callback(const sensor_msgs::PointCloud2ConstPtr& msg)
                 pf_factor_data_horizon_, parameters_, radar_imu_transform_);
         for (const RadarPFDistanceFactor& factor : radar_pf_distance_factors)
         {
-            graph_.add(factor);
+            const auto factor_ptr =
+                std::make_shared<RadarPFDistanceFactor>(factor);
+            graph_.push_back(factor_ptr);
+            // Factors of the oldest data slot (attached to X(1)) are dropped
+            // from the horizon after this step, so they have to be
+            // marginalized into the prior together with X(0).
+            if (factor_ptr->keys()[1] == X(1))
+            {
+                oldest_slot_factors_.push_back(factor_ptr);
+            }
         }
 
         for (int i = 0; i < imu_factor_data_horizon_.size(); ++i)
@@ -218,8 +256,10 @@ void RIOFg::PC2Callback(const sensor_msgs::PointCloud2ConstPtr& msg)
                  velocity_factor_data_horizon_[i].velocities_and_points_.rows();
                  ++j)
             {
+                // Data slot `i` holds the scan taken at the END of IMU
+                // factor `i` (X(i) -> X(i + 1)), i.e. at pose `i + 1`.
                 const RadialVelocityFactor radial_velocity_factor(
-                    X(i), V(i), B(i),
+                    X(i + 1), V(i + 1), B(i + 1),
                     velocity_factor_data_horizon_[i].velocities_and_points_.row(
                         j)(0),
                     velocity_factor_data_horizon_[i]
@@ -227,7 +267,14 @@ void RIOFg::PC2Callback(const sensor_msgs::PointCloud2ConstPtr& msg)
                         .tail(3),
                     radar_imu_transform_, velocity_factor_data_horizon_[i].w_m_,
                     velocity_robust_noise);
-                graph_.add(radial_velocity_factor);
+                const auto factor_ptr =
+                    std::make_shared<RadialVelocityFactor>(
+                        radial_velocity_factor);
+                graph_.push_back(factor_ptr);
+                if (i == 0)
+                {
+                    oldest_slot_factors_.push_back(factor_ptr);
+                }
             }
         }
 
@@ -281,8 +328,10 @@ void RIOFg::marginalize()
     to_marginalize_out.insert(to_marginalize_out.end(),
                               pfs_keys_to_marginalize_out.begin(),
                               pfs_keys_to_marginalize_out.end());
-    graph_ = marginalization_.marginalizeOut(
-        graph_, values_, previous_solution_, to_marginalize_out);
+    graph_ = marginalization_.marginalizeOut(graph_, values_,
+                                             previous_solution_,
+                                             to_marginalize_out,
+                                             oldest_slot_factors_);
 }
 
 void RIOFg::initializeSolution()
@@ -463,6 +512,10 @@ void RIOFg::IMUCallback(const sensor_msgs::ImuConstPtr& msg)
 {
     IMUMeasurement imu_measurement(msg);
     imu_measurements_.push_back(imu_measurement);
+    if (is_initialized_)
+    {
+        processPendingPC2();
+    }
 }
 
 std::shared_ptr<gtsam::PreintegratedCombinedMeasurements>

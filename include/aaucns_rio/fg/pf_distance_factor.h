@@ -18,6 +18,7 @@
 #include <gtsam/linear/NoiseModel.h>
 #include <gtsam/navigation/ImuBias.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
+#include <gtsam/nonlinear/NoiseModelFactorN.h>
 #include <gtsam/slam/BetweenFactor.h>
 
 #include <Eigen/Dense>
@@ -32,7 +33,7 @@ namespace aaucns_rio
 {
 // Factor between a point (position of a landmark) and a pose.
 class RadarPFDistanceFactor
-    : public gtsam::NoiseModelFactor2<gtsam::Point3, gtsam::Pose3>
+    : public gtsam::NoiseModelFactorN<gtsam::Point3, gtsam::Pose3>
 {
     gtsam::Pose3 radar_to_imu_transform_;
     // State with persistent features. in EKF `.most_recent_coordinates` holds
@@ -46,7 +47,7 @@ class RadarPFDistanceFactor
                           const gtsam::Pose3& radar_to_imu_transform,
                           const Eigen::Vector3d& measured_pf_coords)
         // head is past, tail is current.
-        : gtsam::NoiseModelFactor2<gtsam::Point3, gtsam::Pose3>(model, i, j),
+        : gtsam::NoiseModelFactorN<gtsam::Point3, gtsam::Pose3>(model, i, j),
           radar_to_imu_transform_(radar_to_imu_transform),
           measured_pf_coords_(measured_pf_coords)
     {
@@ -120,9 +121,10 @@ class RadarPFDistanceFactor
         if (H1)
             (*H1) =
                 (gtsam::Matrix(1, 3) << jacobian.block(0, 15, 1, 3)).finished();
+        // Translation block: world-frame -> GTSAM body-frame perturbation.
         if (H2)
             (*H2) = (gtsam::Matrix(1, 6) << jacobian.block(0, 6, 1, 3),
-                     jacobian.block(0, 0, 1, 3))
+                     jacobian.block(0, 0, 1, 3) * p_current.rotation().matrix())
                         .finished();
 
         const double measured_pf_distance = measured_pf_coords_.norm();
@@ -170,7 +172,8 @@ class RadarPFDistanceFactorFactory
                               .most_recent_updated_state_
                               .persistent_features_[i]
                               .id),
-                        X(j),
+                        // Slot `j` holds the PFs measured at pose `j + 1`.
+                        X(j + 1),
                         pf_distance_robust_noise
                         /*pf_distance_factor_noise*/,
                         radar_to_imu_transform,

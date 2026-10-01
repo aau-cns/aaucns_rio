@@ -36,7 +36,9 @@ class Marginalization
     gtsam::NonlinearFactorGraph marginalizeOut(
         const gtsam::NonlinearFactorGraph& graph,
         const gtsam::Values& values_after_shift, const gtsam::Values& solution,
-        const gtsam::FastVector<gtsam::Key>& keysToMarginalize);
+        const gtsam::FastVector<gtsam::Key>& keysToMarginalize,
+        const gtsam::NonlinearFactorGraph& extra_factors =
+            gtsam::NonlinearFactorGraph());
 
     // Fills newGraph with factors which are not connected and
     // marginalizedOutGraph with all factors which will be marginalized out,
@@ -45,7 +47,9 @@ class Marginalization
         const gtsam::NonlinearFactorGraph& graph,
         gtsam::NonlinearFactorGraph& marginalizedOutGraph,
         gtsam::FastSet<gtsam::Key>& setOfKeysToMarginalize,
-        gtsam::FastSet<gtsam::Key>& connectedKeys);
+        gtsam::FastSet<gtsam::Key>& connectedKeys,
+        const gtsam::NonlinearFactorGraph& extra_factors =
+            gtsam::NonlinearFactorGraph());
 
     // Compute the Schur complement with the given dimension of marginalized
     // factors and other factors.

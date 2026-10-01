@@ -16,6 +16,7 @@
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/navigation/ImuBias.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
+#include <gtsam/nonlinear/NoiseModelFactorN.h>
 
 #include <Eigen/Dense>
 
@@ -25,7 +26,7 @@ namespace aaucns_rio
 {
 // Measurement model is a function of 3 entities: pose, v, and biases.
 class RadialVelocityFactor
-    : public gtsam::NoiseModelFactor3<gtsam::Pose3, gtsam::Vector3,
+    : public gtsam::NoiseModelFactorN<gtsam::Pose3, gtsam::Vector3,
                                       gtsam::imuBias::ConstantBias>
 {
     double measured_radial_velocity_;
@@ -41,7 +42,7 @@ class RadialVelocityFactor
                          const gtsam::Pose3& radar_to_imu_transform,
                          const Eigen::Vector3d& w_m,
                          const gtsam::SharedNoiseModel& model)
-        : NoiseModelFactor3<gtsam::Pose3, gtsam::Vector3,
+        : gtsam::NoiseModelFactorN<gtsam::Pose3, gtsam::Vector3,
                             gtsam::imuBias::ConstantBias>(model, j, i, k),
           measured_radial_velocity_(measured_radial_velocity),
           radar_point_(radar_point),

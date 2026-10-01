@@ -36,7 +36,7 @@ noise_meas1: 0.04
 # IMU.
 noise_meas2: 0.01
 # Velocity.
-noise_meas3: 0.035
+noise_meas3: 0.05  # retuned for FG fix (upstream default 0.035); see FG fix notes
 # Persistent feature noise. 0.4
 noise_meas4: 0.04
 # Below radar-IMU calibration for `awr_1 - 10` bags from 22.08.22.

@@ -31,6 +31,7 @@
 #include <Eigen/Dense>
 #include <array>
 #include <cstddef>
+#include <deque>
 #include <fstream>
 #include <string>
 
@@ -84,6 +85,8 @@ class RIOFg
                                              const double delay);
 
     void PC2Callback(const sensor_msgs::PointCloud2ConstPtr& msg);
+    void processPC2(const sensor_msgs::PointCloud2ConstPtr& msg);
+    void processPendingPC2();
     void IMUCallback(const sensor_msgs::ImuConstPtr& msg);
 
     gtsam::Values solveGraph();
@@ -120,6 +123,10 @@ class RIOFg
     gtsam::Pose3 radar_imu_transform_;
     gtsam::Vector noise_model_bias_;
     gtsam::NonlinearFactorGraph graph_;
+    // Measurement factors of the oldest horizon data slot (they constrain
+    // X(1)/V(1)/B(1)); marginalized together with X(0) when the window
+    // slides because their data is dropped from the horizon afterwards.
+    gtsam::NonlinearFactorGraph oldest_slot_factors_;
     gtsam::Values values_;
     gtsam::Values previous_solution_;
     std::shared_ptr<gtsam::PreintegrationCombinedParams> preintegration_params_;
@@ -152,6 +159,9 @@ class RIOFg
     // Make sure to keep alive the external nh.
     ros::NodeHandle& nh_;
     ros::ServiceServer initialization_service_;
+    // Scans waiting for IMU measurements up to their timestamp.
+    static constexpr std::size_t kMaxPendingPC2 = 20;
+    std::deque<sensor_msgs::PointCloud2ConstPtr> pending_pc2_;
     std::size_t pc2_callback_times_called_ = 0;
     double previous_pc2_timestamp_s_;
     int poses_in_window_ = 0;

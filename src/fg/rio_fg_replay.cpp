@@ -38,7 +38,9 @@ RIOFgReplay::RIOFgReplay(
     std_srvs::SetBool srv;
     (void)initServiceCallback(srv.request, srv.response);
     input_bag_.open(input_bag, rosbag::bagmode::Read);
-    output_bag_.open(std::string("replayed_fg_") + input_bag,
+    // Use only the basename so that absolute input paths work.
+    output_bag_.open(std::string("replayed_fg_") +
+                         input_bag.substr(input_bag.find_last_of('/') + 1),
                      rosbag::bagmode::Write);
 }
 
