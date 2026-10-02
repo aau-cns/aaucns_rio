@@ -50,24 +50,28 @@ inline void fixEigenvalues(Eigen::MatrixXd& cov_mat)
         partial_cov_mat = cov_mat.block(0, 0, zero_index, zero_index);
     }
 
-    Eigen::EigenSolver<Eigen::MatrixXd> vd(partial_cov_mat);
+    // `partial_cov_mat` is symmetric by construction -- the only caller
+    // (state_updater.cpp) symmetrizes P via 0.5*(P+P^T) immediately before
+    // calling this -- so use SelfAdjointEigenSolver, not the general
+    // EigenSolver. The general solver's iterative algorithm can spuriously
+    // report tiny complex eigenvalues/eigenvectors for an ill-conditioned
+    // (but exactly symmetric) matrix; that case previously fell through to
+    // a real-part-only reconstruction via `V_real.inverse()`, which is
+    // unsound (V_real is not actually a valid eigenbasis there) and could
+    // be near-singular, blowing P up to ~1e15 and then to NaN.
+    // SelfAdjointEigenSolver guarantees real eigenvalues and an orthonormal
+    // eigenvector matrix for any symmetric input, eliminating this failure
+    // mode entirely.
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> vd(partial_cov_mat);
 
-    Eigen::EigenSolver<Eigen::MatrixXd>::EigenvectorsType V(vd.eigenvectors());
-    Eigen::EigenSolver<Eigen::MatrixXd>::EigenvalueType D(vd.eigenvalues());
+    Eigen::MatrixXd V(vd.eigenvectors());
+    Eigen::VectorXd D(vd.eigenvalues());
 
-    if (!(V.imag().isZero() && D.imag().isZero()))
-    {
-        std::cerr
-            << "Warning: Eigenvalue decomposition has imaginary components"
-            << std::endl;
-    }
-    Eigen::MatrixXd V_real(V.real());
-    Eigen::VectorXd D_real(D.real());
     // determine if the matrix is already positive-semi-definite
     bool no_negative_eigenvalues = true;
-    for (int k = 0; k < D_real.size(); k++)
+    for (int k = 0; k < D.size(); k++)
     {
-        if (D_real[k] < 0)
+        if (D[k] < 0)
         {
             no_negative_eigenvalues = false;
         }
@@ -78,7 +82,7 @@ inline void fixEigenvalues(Eigen::MatrixXd& cov_mat)
         return;
     }
 
-    Eigen::VectorXd D_corrected(D_real);
+    Eigen::VectorXd D_corrected(D);
 
     for (int k = 0; k < D_corrected.size(); k++)
     {
@@ -88,7 +92,10 @@ inline void fixEigenvalues(Eigen::MatrixXd& cov_mat)
         }
     }
 
-    partial_cov_mat = V_real * D_corrected.asDiagonal() * V_real.inverse();
+    // V is orthonormal (SelfAdjointEigenSolver guarantee), so V.transpose()
+    // is its inverse -- exact and numerically stable, unlike a general
+    // matrix inverse.
+    partial_cov_mat = V * D_corrected.asDiagonal() * V.transpose();
     if (zero_index)
     {
         cov_mat.block(0, 0, zero_index, zero_index) = partial_cov_mat;

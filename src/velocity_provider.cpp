@@ -51,8 +51,13 @@ Eigen::MatrixXd VelocityProvider::getPointsAndVelocities(
 // to estimate the radar velocity.
 void VelocityProvider::runRansac(Eigen::MatrixXd& velocities_and_points)
 {
-    std::random_device random_device;
-    auto random_engine = std::default_random_engine{random_device()};
+    // Fixed seed (not std::random_device) so that repeated runs on the same
+    // data are exactly reproducible -- this RANSAC's result previously
+    // varied 2-3x in ATE across identical repeated runs purely from
+    // which 3-point subsets got drawn, which is undesirable for citable
+    // results. `static` so the engine's state still advances scan to
+    // scan (not reset to the same draw every call).
+    static std::default_random_engine random_engine{42};
     // Arry of indexes to randomly shuffle.
     std::vector<int> vel_indexes(velocities_and_points.rows());
     std::generate(vel_indexes.begin(), vel_indexes.end(),
