@@ -86,6 +86,38 @@ void StateUpdater::augmentStateAndCovarianceMatrix(State& state)
                        (Config::kMaxPastElements - 1) * 6>(
                     0, State::kNBaseMultiWindowState)
                 .eval();
+
+        // Fifth (out of order) step - shift the clone/persistent-feature
+        // cross-covariance along with clone identity, same as steps 1-3 do
+        // for the clone/clone and clone/IMU blocks. P_ can be larger than
+        // kNAugmentedState (persistent features are appended as extra
+        // columns/rows past it); every block above is sized from
+        // compile-time constants that sum to exactly kNAugmentedState, so
+        // none of them reach that region. Without this, clone k's
+        // correlation with each persistent feature does not move with it
+        // when it shifts to slot k+1, silently misattributing it to the
+        // wrong (older) clone on every single augmentation call.
+        const int n_pf =
+            (state.P_.rows() - static_cast<int>(State::kNAugmentedState)) / 3;
+        if (n_pf > 0)
+        {
+            state.P_.block(State::kNBaseMultiWindowState + 6,
+                           State::kNAugmentedState,
+                           (Config::kMaxPastElements - 1) * 6, n_pf * 3) =
+                state.P_
+                    .block(State::kNBaseMultiWindowState,
+                           State::kNAugmentedState,
+                           (Config::kMaxPastElements - 1) * 6, n_pf * 3)
+                    .eval();
+            state.P_.block(State::kNAugmentedState,
+                           State::kNBaseMultiWindowState + 6, n_pf * 3,
+                           (Config::kMaxPastElements - 1) * 6) =
+                state.P_
+                    .block(State::kNAugmentedState,
+                           State::kNBaseMultiWindowState, n_pf * 3,
+                           (Config::kMaxPastElements - 1) * 6)
+                    .eval();
+        }
     }
     // Fourth step - clone from the current pose to the first-after-imu matrix
     // block. Covariances - position.
@@ -119,6 +151,37 @@ void StateUpdater::augmentStateAndCovarianceMatrix(State& state)
     state.P_.block<State::kNBaseMultiWindowState, 3>(
         0, State::kNBaseMultiWindowState + 3) =
         state.P_.block<State::kNBaseMultiWindowState, 3>(0, 6).eval();
+
+    // New clone's cross-correlation with persistent features: derive it
+    // from the current state's own position/orientation correlation with
+    // them, exactly like the IMU cross-terms just above -- the new clone
+    // *is* the current state at this instant. Without this, slot 0 would
+    // keep whatever stale value was left there by the previous occupant of
+    // that slot (shifted to slot 1 above), not a value that actually
+    // relates to this new clone.
+    {
+        const int n_pf =
+            (state.P_.rows() - static_cast<int>(State::kNAugmentedState)) / 3;
+        if (n_pf > 0)
+        {
+            state.P_.block(State::kNBaseMultiWindowState,
+                           State::kNAugmentedState, 3, n_pf * 3) =
+                state.P_.block(0, State::kNAugmentedState, 3, n_pf * 3)
+                    .eval();
+            state.P_.block(State::kNBaseMultiWindowState + 3,
+                           State::kNAugmentedState, 3, n_pf * 3) =
+                state.P_.block(6, State::kNAugmentedState, 3, n_pf * 3)
+                    .eval();
+            state.P_.block(State::kNAugmentedState,
+                           State::kNBaseMultiWindowState, n_pf * 3, 3) =
+                state.P_.block(State::kNAugmentedState, 0, n_pf * 3, 3)
+                    .eval();
+            state.P_.block(State::kNAugmentedState,
+                           State::kNBaseMultiWindowState + 3, n_pf * 3, 3) =
+                state.P_.block(State::kNAugmentedState, 6, n_pf * 3, 3)
+                    .eval();
+        }
+    }
 }
 
 bool StateUpdater::applyAllMeasurements(
@@ -340,7 +403,15 @@ void StateUpdater::prepareMatricesForPersistentFeaturesUpdate(
     Eigen::MatrixXd& H_pf, Eigen::MatrixXd& R_pf, Eigen::MatrixXd& r_pf)
 {
     constexpr double kChiSquare1DoFThresholdHigh = 5.02;
-    constexpr double kChiSquare1DoFThresholdLow = 0.000982069;
+    // No lower bound: rejecting a "too good" (suspiciously small) normalized
+    // residual is statistically backwards for an EKF -- a small residual
+    // means the measurement agrees with P_, not that it's untrustworthy. If
+    // P_ is inflated, this is exactly the correction that should shrink it
+    // back down; rejecting it instead removes the only way back, producing
+    // a self-reinforcing covariance-growth spiral. Matches the trail/
+    // position update (prepareMatricesForUpdate), which never had a lower
+    // bound.
+    constexpr double kChiSquare1DoFThresholdLow = 0.0;
     const double s_zp = parameters.noise_meas4_ * parameters.noise_meas4_;
     int H_row_index = 0;
     for (int i = 0;
@@ -393,7 +464,9 @@ void StateUpdater::prepareMatricesForVelocityUpdate(
     Eigen::MatrixXd& R, Eigen::MatrixXd& r)
 {
     constexpr double kChiSquare1DoFThresholdHigh = 5.02;
-    constexpr double kChiSquare1DoFThresholdLow = 0.000982069;
+    // See prepareMatricesForPersistentFeaturesUpdate for why this is 0.0,
+    // not the 2.5th-percentile value it used to be.
+    constexpr double kChiSquare1DoFThresholdLow = 0.0;
     const double s_zp_v = parameters.noise_meas3_ * parameters.noise_meas3_;
     int H_row_index = 0;
     for (int i = 0; i < velocities_and_points.rows(); ++i)
