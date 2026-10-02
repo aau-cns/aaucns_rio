@@ -61,6 +61,21 @@ void VelocityProvider::runRansac(Eigen::MatrixXd& velocities_and_points)
     std::vector<int> final_inlier_indexes;
     if (velocities_and_points.rows() >= kNRansacPoints)
     {
+        // The Doppler ego-velocity model relates the radial (Doppler)
+        // velocity to the UNIT direction vector to each point:
+        // `-doppler = p_hat . v`, p_hat = p / ||p|| (matches the
+        // normalization in `evaluateVelocityMeasurementEquation`, which
+        // divides by `single_velocity_and_point.tail(3).norm()`). Using the
+        // raw, range-scaled (x, y, z) coordinates here instead (as before)
+        // made the per-point equation depend on range, so the LLS hypothesis
+        // and the resulting inlier/outlier split did not correspond to the
+        // actual sensor model -- normalize once up front so both do.
+        Eigen::MatrixXd directions =
+            velocities_and_points.rightCols(kNPointAndVelocityDimension - 1);
+        for (int i = 0; i < directions.rows(); ++i)
+        {
+            directions.row(i) /= directions.row(i).norm();
+        }
         // Ransac.
         for (int i = 0; i < kNRansacIter; ++i)
         {
@@ -69,8 +84,10 @@ void VelocityProvider::runRansac(Eigen::MatrixXd& velocities_and_points)
                                               kNPointAndVelocityDimension);
             for (int j = 0; j < potential_inliers.rows(); ++j)
             {
-                potential_inliers.row(j) =
-                    velocities_and_points.row(vel_indexes[j]);
+                potential_inliers(j, 0) =
+                    velocities_and_points(vel_indexes[j], 0);
+                potential_inliers.row(j).tail(kNPointAndVelocityDimension - 1) =
+                    directions.row(vel_indexes[j]);
             }
             // Compute hypothesis model using LLS.
             Eigen::Vector3d estimated_radar_vel;
@@ -78,9 +95,7 @@ void VelocityProvider::runRansac(Eigen::MatrixXd& velocities_and_points)
             {
                 const Eigen::VectorXd residuals =
                     (velocities_and_points.col(0) -
-                     velocities_and_points.rightCols(
-                         kNPointAndVelocityDimension - 1) *
-                         estimated_radar_vel)
+                     directions * estimated_radar_vel)
                         .array()
                         .abs();
                 std::vector<int> inlier_indexes;
