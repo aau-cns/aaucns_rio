@@ -37,6 +37,11 @@ class Parameters
     double noise_qwv_ = 0.0;
     double noise_aux_ = 0.0;
     double noise_scale_ = 0.0;
+    // RANSAC on the Doppler velocities - optional in the config file.
+    // Maximum Doppler residual [m/s] of an inlier.
+    double ransac_inlier_threshold_ = 0.15;
+    int ransac_n_iterations_ = 17;
+    unsigned int ransac_seed_ = 42;
 };
 
 }  // namespace aaucns_rio

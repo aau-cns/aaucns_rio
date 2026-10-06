@@ -14,6 +14,7 @@
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <ros/callback_queue.h>
 #include <ros/ros.h>
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -21,13 +22,17 @@
 
 #include <Eigen/Dense>
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <fstream>
+#include <memory>
+#include <mutex>
 #include <string>
 
 #include "aaucns_rio/circular_buffer.h"
 #include "aaucns_rio/debug.h"
 #include "aaucns_rio/features.h"
+#include "aaucns_rio/imu_buffer.h"
 #include "aaucns_rio/iteration.h"
 #include "aaucns_rio/parameters.h"
 #include "aaucns_rio/points_associator.h"
@@ -42,6 +47,9 @@ class RIO
    public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     static constexpr std::size_t kNStatesInBuffer = 256;
+    // Subscriber queue size for the IMU - messages are moved into
+    // `imu_buffer_` right away by the IMU thread, this only covers bursts.
+    static constexpr uint32_t kImuSubscriberQueueSize = 1000;
     RIO(const std::string& pc2_topic, const std::string& imu_topic,
         const std::string& pose_topic, const std::string& state_topic,
         const std::string& config_filename, const bool dump_features,
@@ -105,6 +113,10 @@ class RIO
                            const double delay);
 
     void PC2Callback(const sensor_msgs::PointCloud2ConstPtr& msg);
+    // Runs in the IMU thread (or in the caller's thread when called
+    // directly, e.g. on replay). Buffers the measurement and propagates the
+    // filter with all buffered measurements unless a radar update holds the
+    // filter - then the update consumes them first.
     void ImuCallback(const sensor_msgs::ImuConstPtr& msg);
 
    protected:
@@ -124,7 +136,7 @@ class RIO
     Features features_;
     std::array<State, kNStatesInBuffer> states_;
     uint8_t state_index_ = 0;
-    bool is_initialized_ = false;
+    std::atomic<bool> is_initialized_{false};
     bool is_prediction_made_ = false;
     bool are_enough_states_collected_ = false;
     std::size_t imu_callback_times_called_ = 0;
@@ -137,6 +149,19 @@ class RIO
     // Make sure to keep alive the external nh.
     ros::NodeHandle& nh_;
     ros::ServiceServer initialization_service_;
+    // IMU measurements are received in their own thread so that they are
+    // not held back (or dropped) while a radar update is running.
+    ImuBuffer imu_buffer_;
+    ros::CallbackQueue imu_callback_queue_;
+    std::unique_ptr<ros::AsyncSpinner> imu_spinner_;
+    // Guards the filter (states, trail, features) shared by the IMU and the
+    // radar callbacks.
+    std::mutex filter_mutex_;
+
+    // Propagate with all buffered IMU measurements. Call with
+    // `filter_mutex_` held.
+    void processBufferedImuMeasurements();
+    void processImuMeasurement(const sensor_msgs::ImuConstPtr& msg);
 
     void outputState(const sensor_msgs::PointCloud2ConstPtr& msg);
     void outputPose(const sensor_msgs::ImuConstPtr& msg);

@@ -20,7 +20,7 @@ namespace aaucns_rio
 {
 Eigen::MatrixXd VelocityProvider::getPointsAndVelocities(
     const pcl::PointCloud<RadarPointCloudType>& current_pc2,
-    debug::Logger& logger)
+    const Parameters& parameters, debug::Logger& logger)
 {
     const pcl::PointCloud<RadarPointCloudType> filtered_current_pc2 =
         util::applyPyramidFiltering(
@@ -42,22 +42,24 @@ Eigen::MatrixXd VelocityProvider::getPointsAndVelocities(
                 filtered_current_pc2.points[i].z;
         }
     }
-    runRansac(velocities_and_points);
+    runRansac(parameters, velocities_and_points);
     return velocities_and_points;
 }
 
 // This function does not perform the full RANSAC. It returns the best inlier
 // set. It is so since we use tightly coupled approach and we don't need
 // to estimate the radar velocity.
-void VelocityProvider::runRansac(Eigen::MatrixXd& velocities_and_points)
+void VelocityProvider::runRansac(const Parameters& parameters,
+                                 Eigen::MatrixXd& velocities_and_points)
 {
     // Fixed seed (not std::random_device) so that repeated runs on the same
     // data are exactly reproducible -- this RANSAC's result previously
     // varied 2-3x in ATE across identical repeated runs purely from
     // which 3-point subsets got drawn, which is undesirable for citable
     // results. `static` so the engine's state still advances scan to
-    // scan (not reset to the same draw every call).
-    static std::default_random_engine random_engine{42};
+    // scan (not reset to the same draw every call). Seeded once, from the
+    // parameters of the first call.
+    static std::default_random_engine random_engine{parameters.ransac_seed_};
     // Arry of indexes to randomly shuffle.
     std::vector<int> vel_indexes(velocities_and_points.rows());
     std::generate(vel_indexes.begin(), vel_indexes.end(),
@@ -82,7 +84,7 @@ void VelocityProvider::runRansac(Eigen::MatrixXd& velocities_and_points)
             directions.row(i) /= directions.row(i).norm();
         }
         // Ransac.
-        for (int i = 0; i < kNRansacIter; ++i)
+        for (int i = 0; i < parameters.ransac_n_iterations_; ++i)
         {
             std::shuffle(vel_indexes.begin(), vel_indexes.end(), random_engine);
             Eigen::MatrixXd potential_inliers(kNRansacPoints,
@@ -106,7 +108,7 @@ void VelocityProvider::runRansac(Eigen::MatrixXd& velocities_and_points)
                 std::vector<int> inlier_indexes;
                 for (int k = 0; k < residuals.rows(); ++k)
                 {
-                    if (residuals(k) < kInlierThreshold)
+                    if (residuals(k) < parameters.ransac_inlier_threshold_)
                     {
                         inlier_indexes.push_back(k);
                     }

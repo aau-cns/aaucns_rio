@@ -11,6 +11,8 @@
 
 #include "aaucns_rio/state_predictor.h"
 
+#include <cassert>
+
 #include "aaucns_rio/calc_q.h"
 #include "aaucns_rio/debug.h"
 #include "aaucns_rio/util.h"
@@ -22,8 +24,8 @@ StatePredictor::StatePredictor()
     // Gravity vector.
     g_ << 0, 0, 9.81;
     // Resize system matrices to base size (without augmentation).
-    Fd_.resize(State::kNAugmentedState, State::kNAugmentedState);
-    Qd_.resize(State::kNAugmentedState, State::kNAugmentedState);
+    Fd_.resize(State::kNBaseMultiWindowState, State::kNBaseMultiWindowState);
+    Qd_.resize(State::kNBaseMultiWindowState, State::kNBaseMultiWindowState);
     Fd_.setIdentity();
     Qd_.setZero();
 }
@@ -157,7 +159,8 @@ void StatePredictor::predictProcessCovariance(const double dt,
     // Real-Time Metric State Estimation for Modular Vision-Inertial Systems.
     // IEEE International Conference on Robotics and Automation. Shanghai,
     // China, 2011.
-    Eigen::MatrixXd Fd(State::kNAugmentedState, State::kNAugmentedState);
+    Eigen::MatrixXd Fd(State::kNBaseMultiWindowState,
+                       State::kNBaseMultiWindowState);
     Fd.setIdentity();
     Fd.block<3, 3>(0, 3) = dt * eye3;
     Fd.block<3, 3>(0, 6) = A;
@@ -169,8 +172,12 @@ void StatePredictor::predictProcessCovariance(const double dt,
     Fd.block<3, 3>(6, 6) = E;
     Fd.block<3, 3>(6, 9) = F;
 
-    const std::size_t n_state_variables =
-        State::kNAugmentedState + 3 * current_state.persistent_features_.size();
+    // The clones and persistent features were copied from the previous state
+    // in predictState(), so both states have the same error state size.
+    const std::size_t n_state_variables = previous_state.getNStateVariables();
+    assert(n_state_variables ==
+           State::getCloneIndex(current_state.getNClones()) +
+               3 * current_state.persistent_features_.size());
 
     Fd_.resize(n_state_variables, n_state_variables);
     Fd_.setIdentity();

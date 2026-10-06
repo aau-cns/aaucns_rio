@@ -18,6 +18,7 @@
 #include <Eigen/Dense>
 
 #include "aaucns_rio/debug.h"
+#include "aaucns_rio/parameters.h"
 #include "aaucns_rio/pcl_conversions_rio.h"
 
 namespace aaucns_rio
@@ -26,17 +27,16 @@ class VelocityProvider
 {
    public:
     static constexpr int kNPointAndVelocityDimension = 4;
-    static constexpr int kNRansacIter = 17;
     static constexpr int kNRansacPoints = 3;
-    static constexpr float kInlierThreshold = 0.15;
 
     VelocityProvider() = default;
     static Eigen::MatrixXd getPointsAndVelocities(
         const pcl::PointCloud<RadarPointCloudType>& current_pc2,
-        debug::Logger& logger);
+        const Parameters& parameters, debug::Logger& logger);
 
    private:
-    static void runRansac(Eigen::MatrixXd& velocities_and_points);
+    static void runRansac(const Parameters& parameters,
+                          Eigen::MatrixXd& velocities_and_points);
     static bool solveLLS(Eigen::MatrixXd& potential_inliers,
                          Eigen::Vector3d& estimated_radar_vel);
 };

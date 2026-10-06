@@ -11,6 +11,11 @@
 
 #include "aaucns_rio/state_updater.h"
 
+#include <algorithm>
+#include <cassert>
+#include <utility>
+#include <vector>
+
 #include "aaucns_rio/debug.h"
 #include "aaucns_rio/trail.h"
 #include "aaucns_rio/trailpoint.h"
@@ -20,168 +25,59 @@ namespace aaucns_rio
 {
 void StateUpdater::augmentStateAndCovarianceMatrix(State& state)
 {
+    const int n_old_clones = state.getNClones();
+    const int n_pf_state_variables = 3 * state.persistent_features_.size();
+    const int old_pf_index = state.getPersistentFeaturesIndex();
+    assert(old_pf_index ==
+           static_cast<int>(State::getCloneIndex(n_old_clones)));
+    // Once the window is full the oldest clone is dropped.
+    const int n_kept_clones =
+        std::min(n_old_clones, Config::kMaxPastElements - 1);
+
     // Add new past state to the state vector.
     state.past_positions_.push_front(state.p_);
     state.past_orientations_.push_front(state.q_);
 
-    if (Config::kMaxPastElements > 1)
+    // Every error state after augmentation is a copy of one error state
+    // before it: the base state, then the new clone (a copy of the current
+    // position and orientation), then the kept clones shifted by one slot and
+    // finally the persistent features. The new covariance is therefore the
+    // old one re-indexed with `indices`, cross-correlations included.
+    std::vector<int> indices;
+    const std::size_t n_state_variables =
+        State::getCloneIndex(state.getNClones()) + n_pf_state_variables;
+    indices.reserve(n_state_variables);
+    for (int i = 0; i < State::kNBaseMultiWindowState; ++i)
     {
-        // First step - covariances and correlations one step forwards.
-        state.P_.block<(Config::kMaxPastElements - 1) * 6,
-                       (Config::kMaxPastElements - 1) * 6>(
-            State::kNBaseMultiWindowState + 6,
-            State::kNBaseMultiWindowState + 6) =
-            state.P_
-                .block<(Config::kMaxPastElements - 1) * 6,
-                       (Config::kMaxPastElements - 1) * 6>(
-                    State::kNBaseMultiWindowState,
-                    State::kNBaseMultiWindowState)
-                .eval();
-        // Second step - copy corss-correlations between the newest clone and
-        // the oldest one - cols - position.
-        state.P_.block<(Config::kMaxPastElements - 1) * 6, 3>(
-            State::kNBaseMultiWindowState + 6, State::kNBaseMultiWindowState) =
-            state.P_
-                .block<(Config::kMaxPastElements - 1) * 6, 3>(
-                    State::kNBaseMultiWindowState, 0)
-                .eval();
-        // Orientation.
-        state.P_.block<(Config::kMaxPastElements - 1) * 6, 3>(
-            State::kNBaseMultiWindowState + 6,
-            State::kNBaseMultiWindowState + 3) =
-            state.P_
-                .block<(Config::kMaxPastElements - 1) * 6, 3>(
-                    State::kNBaseMultiWindowState, 6)
-                .eval();
-        // Rows - position.
-        state.P_.block<3, (Config::kMaxPastElements - 1) * 6>(
-            State::kNBaseMultiWindowState, State::kNBaseMultiWindowState + 6) =
-            state.P_
-                .block<3, (Config::kMaxPastElements - 1) * 6>(
-                    0, State::kNBaseMultiWindowState)
-                .eval();
-        state.P_.block<3, (Config::kMaxPastElements - 1) * 6>(
-            State::kNBaseMultiWindowState + 3,
-            State::kNBaseMultiWindowState + 6) =
-            state.P_
-                .block<3, (Config::kMaxPastElements - 1) * 6>(
-                    6, State::kNBaseMultiWindowState)
-                .eval();
-        // Third step - copy cross-correlations between imu states and clones.
-        // Rows.
-        state.P_.block<(Config::kMaxPastElements - 1) * 6,
-                       State::kNBaseMultiWindowState>(
-            State::kNBaseMultiWindowState + 6, 0) =
-            state.P_
-                .block<(Config::kMaxPastElements - 1) * 6,
-                       State::kNBaseMultiWindowState>(
-                    State::kNBaseMultiWindowState, 0)
-                .eval();
-        // Cols.
-        state.P_.block<State::kNBaseMultiWindowState,
-                       (Config::kMaxPastElements - 1) * 6>(
-            0, State::kNBaseMultiWindowState + 6) =
-            state.P_
-                .block<State::kNBaseMultiWindowState,
-                       (Config::kMaxPastElements - 1) * 6>(
-                    0, State::kNBaseMultiWindowState)
-                .eval();
+        indices.push_back(i);
+    }
+    for (int i = 0; i < 3; ++i)
+    {
+        indices.push_back(i);
+    }
+    for (int i = 6; i < 9; ++i)
+    {
+        indices.push_back(i);
+    }
+    for (int i = 0; i < n_kept_clones * State::kNCloneState; ++i)
+    {
+        indices.push_back(State::getCloneIndex(0) + i);
+    }
+    for (int i = 0; i < n_pf_state_variables; ++i)
+    {
+        indices.push_back(old_pf_index + i);
+    }
+    assert(indices.size() == n_state_variables);
 
-        // Fifth (out of order) step - shift the clone/persistent-feature
-        // cross-covariance along with clone identity, same as steps 1-3 do
-        // for the clone/clone and clone/IMU blocks. P_ can be larger than
-        // kNAugmentedState (persistent features are appended as extra
-        // columns/rows past it); every block above is sized from
-        // compile-time constants that sum to exactly kNAugmentedState, so
-        // none of them reach that region. Without this, clone k's
-        // correlation with each persistent feature does not move with it
-        // when it shifts to slot k+1, silently misattributing it to the
-        // wrong (older) clone on every single augmentation call.
-        const int n_pf =
-            (state.P_.rows() - static_cast<int>(State::kNAugmentedState)) / 3;
-        if (n_pf > 0)
+    Eigen::MatrixXd P(indices.size(), indices.size());
+    for (int col = 0; col < P.cols(); ++col)
+    {
+        for (int row = 0; row < P.rows(); ++row)
         {
-            state.P_.block(State::kNBaseMultiWindowState + 6,
-                           State::kNAugmentedState,
-                           (Config::kMaxPastElements - 1) * 6, n_pf * 3) =
-                state.P_
-                    .block(State::kNBaseMultiWindowState,
-                           State::kNAugmentedState,
-                           (Config::kMaxPastElements - 1) * 6, n_pf * 3)
-                    .eval();
-            state.P_.block(State::kNAugmentedState,
-                           State::kNBaseMultiWindowState + 6, n_pf * 3,
-                           (Config::kMaxPastElements - 1) * 6) =
-                state.P_
-                    .block(State::kNAugmentedState,
-                           State::kNBaseMultiWindowState, n_pf * 3,
-                           (Config::kMaxPastElements - 1) * 6)
-                    .eval();
+            P(row, col) = state.P_(indices[row], indices[col]);
         }
     }
-    // Fourth step - clone from the current pose to the first-after-imu matrix
-    // block. Covariances - position.
-    state.P_.block<3, 3>(State::kNBaseMultiWindowState,
-                         State::kNBaseMultiWindowState) =
-        state.P_.block<3, 3>(0, 0).eval();
-    // Orientation.
-    state.P_.block<3, 3>(State::kNBaseMultiWindowState + 3,
-                         State::kNBaseMultiWindowState + 3) =
-        state.P_.block<3, 3>(6, 6).eval();
-    // Cross-correlations of position and orientation.
-    state.P_.block<3, 3>(State::kNBaseMultiWindowState + 3,
-                         State::kNBaseMultiWindowState) =
-        state.P_.block<3, 3>(6, 0).eval();
-    state.P_.block<3, 3>(State::kNBaseMultiWindowState,
-                         State::kNBaseMultiWindowState + 3) =
-        state.P_.block<3, 3>(0, 6).eval();
-    // Cross-correlations of all states - rows - position.
-    state.P_.block<3, State::kNBaseMultiWindowState>(
-        State::kNBaseMultiWindowState, 0) =
-        state.P_.block<3, State::kNBaseMultiWindowState>(0, 0).eval();
-    // Orientation.
-    state.P_.block<3, State::kNBaseMultiWindowState>(
-        State::kNBaseMultiWindowState + 3, 0) =
-        state.P_.block<3, State::kNBaseMultiWindowState>(6, 0).eval();
-    // Cross-correlations of all states - cols - position.
-    state.P_.block<State::kNBaseMultiWindowState, 3>(
-        0, State::kNBaseMultiWindowState) =
-        state.P_.block<State::kNBaseMultiWindowState, 3>(0, 0).eval();
-    // Orientation.
-    state.P_.block<State::kNBaseMultiWindowState, 3>(
-        0, State::kNBaseMultiWindowState + 3) =
-        state.P_.block<State::kNBaseMultiWindowState, 3>(0, 6).eval();
-
-    // New clone's cross-correlation with persistent features: derive it
-    // from the current state's own position/orientation correlation with
-    // them, exactly like the IMU cross-terms just above -- the new clone
-    // *is* the current state at this instant. Without this, slot 0 would
-    // keep whatever stale value was left there by the previous occupant of
-    // that slot (shifted to slot 1 above), not a value that actually
-    // relates to this new clone.
-    {
-        const int n_pf =
-            (state.P_.rows() - static_cast<int>(State::kNAugmentedState)) / 3;
-        if (n_pf > 0)
-        {
-            state.P_.block(State::kNBaseMultiWindowState,
-                           State::kNAugmentedState, 3, n_pf * 3) =
-                state.P_.block(0, State::kNAugmentedState, 3, n_pf * 3)
-                    .eval();
-            state.P_.block(State::kNBaseMultiWindowState + 3,
-                           State::kNAugmentedState, 3, n_pf * 3) =
-                state.P_.block(6, State::kNAugmentedState, 3, n_pf * 3)
-                    .eval();
-            state.P_.block(State::kNAugmentedState,
-                           State::kNBaseMultiWindowState, n_pf * 3, 3) =
-                state.P_.block(State::kNAugmentedState, 0, n_pf * 3, 3)
-                    .eval();
-            state.P_.block(State::kNAugmentedState,
-                           State::kNBaseMultiWindowState + 3, n_pf * 3, 3) =
-                state.P_.block(State::kNAugmentedState, 6, n_pf * 3, 3)
-                    .eval();
-        }
-    }
+    state.P_ = std::move(P);
 }
 
 bool StateUpdater::applyAllMeasurements(
@@ -219,7 +115,7 @@ bool StateUpdater::applyAllMeasurements(
 
     // Concatenate all matrices.
     Eigen::MatrixXd H_full(H.rows() + H_velocity.rows() + H_pf.rows(),
-                           State::kNAugmentedState + H_pf.rows());
+                           closest_to_measurement_state.getNStateVariables());
     Eigen::MatrixXd r_full(H.rows() + H_velocity.rows() + H_pf.rows(), 1);
 
     std::vector<Eigen::MatrixXd> list_of_H = {H, H_velocity, H_pf};
@@ -237,8 +133,7 @@ bool StateUpdater::applyAllMeasurements(
     // Do the update using EKF equations and
     // calculate the correction.
     const std::size_t n_state_variables =
-        State::kNAugmentedState +
-        3 * closest_to_measurement_state.persistent_features_.size();
+        closest_to_measurement_state.getNStateVariables();
     Eigen::MatrixXd S(R_full.rows(), R_full.cols());
     Eigen::MatrixXd K(n_state_variables, R_full.rows());
     S = H_full * closest_to_measurement_state.P_ * H_full.transpose() + R_full;
@@ -314,7 +209,11 @@ void StateUpdater::applyCorrection(const Eigen::MatrixXd& correction,
             .most_recent_coordinates =
             closest_to_measurement_state.persistent_features_[i]
                 .most_recent_coordinates.eval() +
-            correction.block<3, 1>(State::kNAugmentedState + i * 3, 0)
+            correction
+                .block<3, 1>(
+                    closest_to_measurement_state.getPersistentFeaturesIndex() +
+                        i * 3,
+                    0)
                 .transpose();
     }
 }
@@ -380,9 +279,8 @@ void StateUpdater::prepareMatricesForUpdate(
                     // Prepare H.
 
                     H.conservativeResize(
-                        H_row_index, State::kNAugmentedState +
-                                         3 * closest_to_measurement_state
-                                                 .persistent_features_.size());
+                        H_row_index,
+                        closest_to_measurement_state.getNStateVariables());
 
                     H.row(H_row_index - 1) = candidate_row;
                     // Prepare R.
@@ -445,8 +343,7 @@ void StateUpdater::prepareMatricesForPersistentFeaturesUpdate(
             ++H_row_index;
             H_pf.conservativeResize(
                 H_row_index,
-                State::kNAugmentedState + 3 * closest_to_measurement_state
-                                                  .persistent_features_.size());
+                closest_to_measurement_state.getNStateVariables());
             H_pf.row(H_row_index - 1) = candidate_row;
             // Prepare r.
             r_pf.conservativeResize(H_row_index, 1);
@@ -495,8 +392,7 @@ void StateUpdater::prepareMatricesForVelocityUpdate(
             ++H_row_index;
             H.conservativeResize(
                 H_row_index,
-                State::kNAugmentedState + 3 * closest_to_measurement_state
-                                                  .persistent_features_.size());
+                closest_to_measurement_state.getNStateVariables());
             H.row(H_row_index - 1) = candidate_row;
             // Prepare r.
             r.conservativeResize(H_row_index, 1);
@@ -546,8 +442,7 @@ Eigen::MatrixXd StateUpdater::getPersistentFeatureJacobianForSingleFeature(
     const int index)
 {
     Eigen::MatrixXd H_not_reduced(
-        3, State::kNAugmentedState +
-               3 * closest_to_measurement_state.persistent_features_.size());
+        3, closest_to_measurement_state.getNStateVariables());
     H_not_reduced.setZero();
     // H(0, 0).
     H_not_reduced.block<3, 3>(0, 0) =
@@ -582,7 +477,9 @@ Eigen::MatrixXd StateUpdater::getPersistentFeatureJacobianForSingleFeature(
                                        util::getSkewSymmetricMat(to_skew_2);
     // H(0, N * clones) = 0.
     // H(0, index).
-    H_not_reduced.block<3, 3>(0, State::kNAugmentedState + index * 3) =
+    H_not_reduced.block<3, 3>(
+        0, closest_to_measurement_state.getPersistentFeaturesIndex() +
+               index * 3) =
         closest_to_measurement_state.q_ri_.conjugate().toRotationMatrix() *
         closest_to_measurement_state.q_.conjugate().toRotationMatrix();
 
@@ -597,8 +494,7 @@ Eigen::MatrixXd StateUpdater::getVelocityJacobianForSingleFeature(
     const Eigen::VectorXd& single_velocity_and_point)
 {
     Eigen::MatrixXd H_not_reduced(
-        3, State::kNAugmentedState +
-               3 * closest_to_measurement_state.persistent_features_.size());
+        3, closest_to_measurement_state.getNStateVariables());
     H_not_reduced.setZero();
     // H(0, 0) = 0.
     // H(0, 1).
@@ -646,8 +542,7 @@ Eigen::MatrixXd StateUpdater::getJacobianForSingleFeature(
     const Eigen::VectorXd& single_matched_feature, const int index)
 {
     Eigen::MatrixXd H_not_reduced(
-        3, State::kNAugmentedState +
-               3 * closest_to_measurement_state.persistent_features_.size());
+        3, closest_to_measurement_state.getNStateVariables());
     H_not_reduced.setZero();
     // H(0, 0)
     H_not_reduced.block<3, 3>(0, 0) =

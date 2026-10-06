@@ -36,7 +36,8 @@ void State::reset()
     a_m_.setZero();
     p_ri_.setZero();
     q_ri_.setIdentity();
-    P_.resize(kNAugmentedState, kNAugmentedState);
+    // No clones yet - they are added by augmentation.
+    P_.resize(kNBaseMultiWindowState, kNBaseMultiWindowState);
     P_.setZero();
     past_positions_.reset();
     past_orientations_.reset();
@@ -105,6 +106,7 @@ void State::toPoseNoCovMsg(geometry_msgs::PoseStampedPtr pose)
 
 std::vector<std::size_t> State::removePersistentFeaturesAndUpdateCovariance()
 {
+    const std::size_t pf_index = getPersistentFeaturesIndex();
     std::vector<std::size_t> removed_pfs_indexes;
     for (int i = 0; i < persistent_features_.size(); ++i)
     {
@@ -117,31 +119,31 @@ std::vector<std::size_t> State::removePersistentFeaturesAndUpdateCovariance()
             else
             {
                 // Update covariance matrix.
-                P_.block(kNAugmentedState + 3 * i, kNAugmentedState + 3 * i,
+                P_.block(pf_index + 3 * i, pf_index + 3 * i,
                          3 * (persistent_features_.size() - 1 - i),
                          3 * (persistent_features_.size() - 1 - i)) =
-                    P_.block(kNAugmentedState + 3 * (i + 1),
-                             kNAugmentedState + 3 * (i + 1),
+                    P_.block(pf_index + 3 * (i + 1),
+                             pf_index + 3 * (i + 1),
                              3 * (persistent_features_.size() - 1 - i),
                              3 * (persistent_features_.size() - 1 - i))
                         .eval();
-                P_.block(kNAugmentedState + 3 * i, 0,
+                P_.block(pf_index + 3 * i, 0,
                          3 * (persistent_features_.size() - 1 - i),
-                         kNAugmentedState + 3 * i) =
-                    P_.block(kNAugmentedState + 3 * (i + 1), 0,
+                         pf_index + 3 * i) =
+                    P_.block(pf_index + 3 * (i + 1), 0,
                              3 * (persistent_features_.size() - 1 - i),
-                             kNAugmentedState + 3 * i)
+                             pf_index + 3 * i)
                         .eval();
-                P_.block(0, kNAugmentedState + 3 * i, kNAugmentedState + 3 * i,
+                P_.block(0, pf_index + 3 * i, pf_index + 3 * i,
                          3 * (persistent_features_.size() - 1 - i)) =
-                    P_.block(0, kNAugmentedState + 3 * (i + 1),
-                             kNAugmentedState + 3 * i,
+                    P_.block(0, pf_index + 3 * (i + 1),
+                             pf_index + 3 * i,
                              3 * (persistent_features_.size() - 1 - i))
                         .eval();
             }
             P_.conservativeResize(
-                kNAugmentedState + 3 * (persistent_features_.size() - 1),
-                kNAugmentedState + 3 * (persistent_features_.size() - 1));
+                pf_index + 3 * (persistent_features_.size() - 1),
+                pf_index + 3 * (persistent_features_.size() - 1));
             // Remove pf.
             removed_pfs_indexes.push_back(persistent_features_[i].id);
             persistent_features_.erase(persistent_features_.begin() + i);
@@ -155,6 +157,8 @@ void State::acceptPersistentFeature(const TrailPoint& trailpoint,
                                     const TrailPoint::CoordType& local_coordinates,
                                     const Parameters& parameters)
 {
+    // Taken before adding the feature - P_ does not hold it yet.
+    const std::size_t pf_index = getPersistentFeaturesIndex();
     persistent_features_.push_back(trailpoint);
 
     // Update covariance matrix after adding a persistent feature.
@@ -168,7 +172,7 @@ void State::acceptPersistentFeature(const TrailPoint& trailpoint,
     // point back through the local-to-body transform, corrupting the
     // orientation block (and everything correlated with it) by an amount that
     // grows with distance from the trajectory origin.
-    Eigen::MatrixXd H_rr_pf(3, kNAugmentedState);
+    Eigen::MatrixXd H_rr_pf(3, pf_index);
 
     H_rr_pf.setZero();
     H_rr_pf.block<3, 3>(0, 0) = Eigen::MatrixXd::Identity(3, 3);
@@ -192,7 +196,7 @@ void State::acceptPersistentFeature(const TrailPoint& trailpoint,
     R_pf.diagonal() = diagonal;
 
     const Eigen::MatrixXd P_pf =
-        H_rr_pf * P_.block<kNAugmentedState, kNAugmentedState>(0, 0) *
+        H_rr_pf * P_.block(0, 0, pf_index, pf_index) *
             H_rr_pf.transpose() +
         H_pi_pf * R_pf * H_pi_pf.transpose();
 
@@ -200,17 +204,17 @@ void State::acceptPersistentFeature(const TrailPoint& trailpoint,
     P_.conservativeResize(P_.rows() + 3, P_.cols() + 3);
     P_.block<3, 3>(P_.rows() - 3, P_.cols() - 3) = P_pf;
 
-    P_.block(kNAugmentedState + 3 * (persistent_features_.size() - 1), 0, 3,
-             kNAugmentedState + 3 * (persistent_features_.size() - 1)) =
+    P_.block(pf_index + 3 * (persistent_features_.size() - 1), 0, 3,
+             pf_index + 3 * (persistent_features_.size() - 1)) =
         H_rr_pf *
-        P_.block(0, 0, kNAugmentedState,
-                 kNAugmentedState + 3 * (persistent_features_.size() - 1))
+        P_.block(0, 0, pf_index,
+                 pf_index + 3 * (persistent_features_.size() - 1))
             .eval();
 
-    P_.block(0, kNAugmentedState + 3 * (persistent_features_.size() - 1),
-             kNAugmentedState + 3 * (persistent_features_.size() - 1), 3) =
-        P_.block(kNAugmentedState + 3 * (persistent_features_.size() - 1), 0, 3,
-                 kNAugmentedState + 3 * (persistent_features_.size() - 1))
+    P_.block(0, pf_index + 3 * (persistent_features_.size() - 1),
+             pf_index + 3 * (persistent_features_.size() - 1), 3) =
+        P_.block(pf_index + 3 * (persistent_features_.size() - 1), 0, 3,
+                 pf_index + 3 * (persistent_features_.size() - 1))
             .transpose()
             .eval();
 }

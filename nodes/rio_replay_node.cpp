@@ -39,7 +39,8 @@ int main(int argc, char **argv)
         {"pc2", "/ti_mmwave/radar_scan_pcl"}};
     // Make sure the bagfile is inside ~/.ros folder wherefrom the binary is
     // executed.
-    const std::string input_bagfile = "awr_6.bag";
+    // Optionally pass the bagfile name as the first argument.
+    const std::string input_bagfile = argc > 1 ? argv[1] : "awr_6.bag";
     aaucns_rio::RIOReplay rio_replay("config.yaml", topics_and_topic_names,
                                      input_bagfile, nh);
     rio_replay.run();

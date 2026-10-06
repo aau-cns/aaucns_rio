@@ -55,3 +55,8 @@ noise_scale: 0.0
 noise_pf_x: 0.1
 noise_pf_y: 0.1
 noise_pf_z: 0.1
+# RANSAC on the Doppler velocities (optional, defaults below).
+# Maximum Doppler residual [m/s] of an inlier.
+ransac_inlier_threshold: 0.15
+ransac_n_iterations: 17
+ransac_seed: 42

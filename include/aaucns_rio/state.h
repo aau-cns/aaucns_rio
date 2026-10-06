@@ -49,9 +49,13 @@ class State
     // State of the system with no cloned states yet.
     static constexpr std::size_t kNBaseMultiWindowState =
         kNImuState + kNCalibState;
-    // Number of state variables of the augmented system.
-    static constexpr std::size_t kNAugmentedState =
-        kNBaseMultiWindowState + Config::kMaxPastElements * 6;
+    // Error state size of a single clone (position and orientation).
+    static constexpr std::size_t kNCloneState = 6;
+    // Maximum number of state variables before persistent features: the
+    // covariance starts with only the base state and grows by one clone per
+    // augmentation until Config::kMaxPastElements clones are held.
+    static constexpr std::size_t kNMaxAugmentedState =
+        kNBaseMultiWindowState + Config::kMaxPastElements * kNCloneState;
 
     State();
 
@@ -99,6 +103,23 @@ class State
     // 3D vectors: 0; quaternion: unit quaternion; time:0; Error
     // covariance: zeros.
     void reset();
+    // Number of clones currently held in the state.
+    std::size_t getNClones() const { return past_positions_.size(); }
+    // Index of the first clone error state.
+    static constexpr std::size_t getCloneIndex(const std::size_t clone)
+    {
+        return kNBaseMultiWindowState + clone * kNCloneState;
+    }
+    // Layout of P_: base state, clones, persistent features (3 each). Both
+    // helpers below are taken from P_ itself, not from the number of clones,
+    // because the FG backend keeps clones in its states without growing P_.
+    // Size of the error state (and of P_).
+    std::size_t getNStateVariables() const { return P_.rows(); }
+    // Index of the first persistent feature error state in P_.
+    std::size_t getPersistentFeaturesIndex() const
+    {
+        return P_.rows() - 3 * persistent_features_.size();
+    }
     // Assembles a DoubleArrayStamped message from the state.
     // It does not set the header.
     void toStateMsg(aaucns_rio::DoubleArrayStampedPtr state);

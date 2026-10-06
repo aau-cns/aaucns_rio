@@ -49,26 +49,54 @@ RIO::RIO(const std::string& pc2_topic, const std::string& imu_topic,
 bool RIO::initServiceCallback(std_srvs::SetBool::Request& /*request*/,
                               std_srvs::SetBool::Response& res)
 {
-    initialize(config_filename_);
+    {
+        std::lock_guard<std::mutex> lock(filter_mutex_);
+        // Measurements buffered before (re)initialization are stale.
+        imu_buffer_.clear();
+        initialize(config_filename_);
+    }
     setupSubscribers(pc2_topic_, imu_topic_, nh_);
     res.success = true;
     ROS_INFO_STREAM("Initialized filter trough ROS Service.");
     return true;
 }
 
-RIO::~RIO(){};
+RIO::~RIO()
+{
+    // Stop the IMU thread before the members it uses are destroyed.
+    if (imu_spinner_)
+    {
+        imu_spinner_->stop();
+    }
+    imu_sub_.shutdown();
+}
 
 void RIO::setupSubscribers(const std::string& pc2_topic,
                            const std::string& imu_topic, ros::NodeHandle& nh)
 {
     pc2_sub_ = nh.subscribe<sensor_msgs::PointCloud2>(pc2_topic, 1,
                                                       &RIO::PC2Callback, this);
-    imu_sub_ =
-        nh.subscribe<sensor_msgs::Imu>(imu_topic, 1, &RIO::ImuCallback, this);
+    // The IMU is served by its own queue and thread.
+    ros::SubscribeOptions imu_options =
+        ros::SubscribeOptions::create<sensor_msgs::Imu>(
+            imu_topic, kImuSubscriberQueueSize,
+            [this](const sensor_msgs::ImuConstPtr& msg) { ImuCallback(msg); },
+            ros::VoidPtr(),
+            &imu_callback_queue_);
+    imu_sub_ = nh.subscribe(imu_options);
+    if (!imu_spinner_)
+    {
+        imu_spinner_ =
+            std::make_unique<ros::AsyncSpinner>(1, &imu_callback_queue_);
+        imu_spinner_->start();
+    }
 }
 
 void RIO::PC2Callback(const sensor_msgs::PointCloud2ConstPtr& msg)
 {
+    std::lock_guard<std::mutex> lock(filter_mutex_);
+    // Bring the filter up to date with the IMU measurements received so far.
+    processBufferedImuMeasurements();
     if (!is_initialized_ || !is_prediction_made_)
     {
         return;
@@ -86,7 +114,8 @@ void RIO::PC2Callback(const sensor_msgs::PointCloud2ConstPtr& msg)
     State& closest_to_measurement_state = getClosestState(
         msg->header.stamp, closest_to_measurement_state_index, 0.0);
     const Eigen::MatrixXd velocities_and_points =
-        VelocityProvider::getPointsAndVelocities(current_pc2, logger_);
+        VelocityProvider::getPointsAndVelocities(current_pc2, parameters_,
+                                                 logger_);
     if (trail_.isInitialized())
     {
         // Below in `calculate()` we append persistent features into the
@@ -170,6 +199,27 @@ void RIO::ImuCallback(const sensor_msgs::ImuConstPtr& msg)
     {
         return;
     }
+    imu_buffer_.push(msg);
+    // Never wait for a running radar update - it processes the buffer before
+    // updating, and whatever arrives meanwhile is processed with the next
+    // IMU measurement.
+    std::unique_lock<std::mutex> lock(filter_mutex_, std::try_to_lock);
+    if (lock.owns_lock())
+    {
+        processBufferedImuMeasurements();
+    }
+}
+
+void RIO::processBufferedImuMeasurements()
+{
+    for (const auto& msg : imu_buffer_.popAll())
+    {
+        processImuMeasurement(msg);
+    }
+}
+
+void RIO::processImuMeasurement(const sensor_msgs::ImuConstPtr& msg)
+{
 
     // Do EKF prediction here and make fresh state available for
     // the update step.
@@ -247,31 +297,15 @@ void RIO::initialize(const std::string& config_file)
 
 void RIO::initializeCovariance()
 {
-    Eigen::Matrix<double, State::kNAugmentedState, State::kNAugmentedState> P;
-    P.setZero();
-    // (Previously this block was filled via
-    // `Eigen::MatrixXd::Constant(kNImuState, kNImuState, 10e-3)`, which sets
-    // every OFF-diagonal entry to 0.01 too, not just the diagonal -- the
-    // `P.diagonal() = diagonal` call below only overwrites the diagonal, so
-    // that left a spurious ~40% correlation between unrelated error states
-    // (e.g. position vs. accel bias) at initialization. P is already zeroed
-    // above; only the diagonal needs setting, done below.)
-
-    const Eigen::Matrix<double, Config::kMaxPastElements * 6, 1>
-        past_poses_cov_init =
-            Eigen::Matrix<double, Config::kMaxPastElements * 6, 1>::Constant(
-                0.0);
-
+    // Only the base (IMU + calibration) state is initialized - clones are
+    // added to the state and covariance by augmentation.
     Eigen::Matrix<double, State::kNBaseMultiWindowState, 1> imu_cov_init;
 
     imu_cov_init << 0.0011, 0.0011, 0.0011, 0.0011, 0.0011, 0.0011, 0.0011,
         0.01, 0.01, 0.01, 0.01, 0.01, 0.5, 0.5, 0.5,
         /*calib*/ 0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001;
 
-    Eigen::Matrix<double, State::kNAugmentedState, 1> diagonal;
-    diagonal << imu_cov_init, past_poses_cov_init;
-    P.diagonal() = diagonal;
-    states_[state_index_].P_ = P;
+    states_[state_index_].P_ = imu_cov_init.asDiagonal();
 }
 
 State& RIO::getClosestState(const ros::Time& timestamp,
@@ -348,6 +382,22 @@ void RIO::initializeStateFromConfig(const std::string& config_file)
     parameters_.noise_qwv_ = config["noise_qwv"].as<double>();
     parameters_.noise_aux_ = config["noise_aux"].as<double>();
     parameters_.noise_scale_ = config["noise_scale"].as<double>();
+
+    // Optional RANSAC parameters - defaults in `Parameters` otherwise.
+    if (config["ransac_inlier_threshold"])
+    {
+        parameters_.ransac_inlier_threshold_ =
+            config["ransac_inlier_threshold"].as<double>();
+    }
+    if (config["ransac_n_iterations"])
+    {
+        parameters_.ransac_n_iterations_ =
+            config["ransac_n_iterations"].as<int>();
+    }
+    if (config["ransac_seed"])
+    {
+        parameters_.ransac_seed_ = config["ransac_seed"].as<unsigned int>();
+    }
 }
 
 }  // namespace aaucns_rio

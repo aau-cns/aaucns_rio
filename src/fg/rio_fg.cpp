@@ -153,7 +153,8 @@ void RIOFg::processPC2(const sensor_msgs::PointCloud2ConstPtr& msg)
 
         // Get velocities and create a radial velocity factor.
         const Eigen::MatrixXd velocities_and_points =
-            VelocityProvider::getPointsAndVelocities(current_pc2, logger_);
+            VelocityProvider::getPointsAndVelocities(current_pc2, parameters_,
+                                                     logger_);
 
         int current_pc2_timestamp_s_index;
         const IMUMeasurement& imu_measurement = getClosestIMUMeasurement(
@@ -693,6 +694,22 @@ void RIOFg::initializeStateFromConfig(const std::string& config_file)
     parameters_.noise_meas2_ = config["noise_meas2"].as<double>();
     parameters_.noise_meas3_ = config["noise_meas3"].as<double>();
     parameters_.noise_meas4_ = config["noise_meas4"].as<double>();
+
+    // Optional RANSAC parameters - defaults in `Parameters` otherwise.
+    if (config["ransac_inlier_threshold"])
+    {
+        parameters_.ransac_inlier_threshold_ =
+            config["ransac_inlier_threshold"].as<double>();
+    }
+    if (config["ransac_n_iterations"])
+    {
+        parameters_.ransac_n_iterations_ =
+            config["ransac_n_iterations"].as<int>();
+    }
+    if (config["ransac_seed"])
+    {
+        parameters_.ransac_seed_ = config["ransac_seed"].as<unsigned int>();
+    }
 }
 
 }  // namespace aaucns_rio
