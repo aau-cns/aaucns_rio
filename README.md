@@ -20,6 +20,8 @@ Then, run the software using one of the launch files in the `launch/` folder.
 RIO estimator must be configured through a yaml config file. An example is in `config/` folder.
 The software reads this config from the `~/.ros` folder (or your alternative ROS runtine folder if you changed it).
 
+IT IS STRONGLY RECOMMENDED TO RUN USING THE DOCKER - SEE THE `docker` SUBFOLDER.
+
 # Dependencies
 
 Users are expected to have Eigen, PCL and GTSAM installed system-wide.
@@ -48,7 +50,3 @@ Remember to place them in your `~/.ros` folder.
 
 In the file `config/config.yaml` there are several parameters to control the behavior of the estimator.
 Some parameters require at the moment the code to be recompiled. They are in the `include/aaucns_rio/config.h` file.
-
-# Future work
-
-It is planned to provide a docker container with the code.
