@@ -30,9 +30,17 @@ class RadialVelocityFactor
                                       gtsam::imuBias::ConstantBias>
 {
     double measured_radial_velocity_;
-    Eigen::Vector3d radar_point_;
-    gtsam::Pose3 radar_to_imu_transform_;
     Eigen::Vector3d w_m_;
+    // Constant parts of the measurement model, computed once here instead
+    // of in every evaluation (this factor is evaluated tens of millions of
+    // times per sequence). Computed with the same expressions as before so
+    // the results are unchanged.
+    // Unit direction to the radar point (row vector).
+    Eigen::Matrix<double, 1, 3> direction_;
+    Eigen::Vector3d p_ri_;
+    Eigen::Matrix3d R_ri_T_;
+    // R_ri^T * [p_ri]x - Jacobian w.r.t. the gyro bias before reduction.
+    Eigen::Matrix3d R_ri_T_skew_p_ri_;
 
    public:
     RadialVelocityFactor(const gtsam::Key j, const gtsam::Key i,
@@ -43,65 +51,20 @@ class RadialVelocityFactor
                          const Eigen::Vector3d& w_m,
                          const gtsam::SharedNoiseModel& model)
         : gtsam::NoiseModelFactorN<gtsam::Pose3, gtsam::Vector3,
-                            gtsam::imuBias::ConstantBias>(model, j, i, k),
+                                   gtsam::imuBias::ConstantBias>(model, j, i,
+                                                                 k),
           measured_radial_velocity_(measured_radial_velocity),
-          radar_point_(radar_point),
-          radar_to_imu_transform_(radar_to_imu_transform),
-          w_m_(w_m)
+          w_m_(w_m),
+          direction_(radar_point.transpose().eval() / radar_point.norm()),
+          p_ri_(radar_to_imu_transform.translation())
     {
-    }
-
-    double evaluateRadialVelocityMeasurementModelAndGetJacobian(
-        const gtsam::Pose3& p_gtsam, const gtsam::Vector3& v_gtsam,
-        const gtsam::imuBias::ConstantBias& b_gtsam,
-        Eigen::MatrixXd& jacobian) const
-    {
-        gtsam::Quaternion q_ri_gtsam =
-            radar_to_imu_transform_.rotation().toQuaternion();
+        const gtsam::Quaternion q_ri_gtsam =
+            radar_to_imu_transform.rotation().toQuaternion();
         Eigen::Quaternion<double> q_ri(q_ri_gtsam.w(), q_ri_gtsam.x(),
                                        q_ri_gtsam.y(), q_ri_gtsam.z());
         q_ri.normalize();
-
-        Eigen::Vector3d p_ri(radar_to_imu_transform_.translation());
-        gtsam::Quaternion q_gtsam = p_gtsam.rotation().toQuaternion();
-        Eigen::Quaternion<double> q(q_gtsam.w(), q_gtsam.x(), q_gtsam.y(),
-                                    q_gtsam.z());
-        q.normalize();
-
-        Eigen::Vector3d v(v_gtsam);
-        Eigen::Vector3d b_w(b_gtsam.gyroscope());
-
-        // Compute the jacobian.
-        Eigen::MatrixXd H_not_reduced(3, 15);
-        H_not_reduced.setZero();
-        // H(0, 0) = 0 (position).
-        // H(0, 1) (velocity).
-        H_not_reduced.block<3, 3>(0, 3) = q_ri.conjugate().toRotationMatrix() *
-                                          q.conjugate().toRotationMatrix();
-        // H(0, 2) (orientation).
-        const Eigen::Vector3d to_skew = q.conjugate().toRotationMatrix() * v;
-        H_not_reduced.block<3, 3>(0, 6) = q_ri.conjugate().toRotationMatrix() *
-                                          util::getSkewSymmetricMat(to_skew);
-        // H(0, 3) (omega bias).
-        H_not_reduced.block<3, 3>(0, 9) = q_ri.conjugate().toRotationMatrix() *
-                                          util::getSkewSymmetricMat(p_ri);
-        // H(0, 4) = 0 (acceleration bias).
-
-        jacobian = (radar_point_.tail(3).transpose().eval() /
-                    radar_point_.tail(3).norm()) *
-                   H_not_reduced;
-
-        // Compute the evaluated velocity.
-        const Eigen::Vector3d radar_velocity_in_radar_frame =
-            q_ri.conjugate().toRotationMatrix() *
-                q.conjugate().toRotationMatrix() * v +
-            q_ri.conjugate().toRotationMatrix() *
-                util::getSkewSymmetricMat(w_m_ - b_w) * p_ri;
-
-        const double velocity_from_state_evaluated =
-            (radar_point_.transpose().eval() / radar_point_.norm()) *
-            radar_velocity_in_radar_frame;
-        return velocity_from_state_evaluated;
+        R_ri_T_ = q_ri.conjugate().toRotationMatrix();
+        R_ri_T_skew_p_ri_ = R_ri_T_ * util::getSkewSymmetricMat(p_ri_);
     }
 
     gtsam::Vector evaluateError(
@@ -112,21 +75,49 @@ class RadialVelocityFactor
         gtsam::OptionalMatrixType H3 =
             static_cast<gtsam::Matrix*>(nullptr)) const
     {
-        Eigen::MatrixXd jacobian;
+        const gtsam::Quaternion q_gtsam = p.rotation().toQuaternion();
+        Eigen::Quaternion<double> q(q_gtsam.w(), q_gtsam.x(), q_gtsam.y(),
+                                    q_gtsam.z());
+        q.normalize();
+        const Eigen::Matrix3d R_T = q.conjugate().toRotationMatrix();
+        const Eigen::Vector3d b_w(b.gyroscope());
+
+        // The Jacobians are only needed when linearizing, not when the
+        // optimizer just evaluates the error.
+        if (H1 || H2 || H3)
+        {
+            // Position and acceleration bias do not enter the model.
+            const Eigen::Matrix<double, 1, 3> zero =
+                Eigen::Matrix<double, 1, 3>::Zero();
+            if (H1)
+            {
+                // Orientation.
+                const Eigen::Vector3d to_skew = R_T * v;
+                const Eigen::Matrix3d H_theta =
+                    R_ri_T_ * util::getSkewSymmetricMat(to_skew);
+                (*H1) = (gtsam::Matrix(1, 6) << direction_ * H_theta, zero)
+                            .finished();
+            }
+            if (H2)
+            {
+                // Velocity.
+                const Eigen::Matrix3d H_v = R_ri_T_ * R_T;
+                (*H2) = direction_ * H_v;
+            }
+            if (H3)
+            {
+                // Gyro bias.
+                (*H3) = (gtsam::Matrix(1, 6) << zero,
+                         direction_ * R_ri_T_skew_p_ri_)
+                            .finished();
+            }
+        }
+
+        const Eigen::Vector3d radar_velocity_in_radar_frame =
+            R_ri_T_ * R_T * v +
+            R_ri_T_ * util::getSkewSymmetricMat(w_m_ - b_w) * p_ri_;
         const double evaluated_radial_velocity =
-            evaluateRadialVelocityMeasurementModelAndGetJacobian(p, v, b,
-                                                                 jacobian);
-
-        if (H1)
-            (*H1) = (gtsam::Matrix(1, 6) << jacobian.block(0, 6, 1, 3),
-                     jacobian.block(0, 0, 1, 3))
-                        .finished();
-        if (H2) (*H2) = jacobian.block(0, 3, 1, 3);
-        if (H3)
-            (*H3) = (gtsam::Matrix(1, 6) << jacobian.block(0, 12, 1, 3),
-                     jacobian.block(0, 9, 1, 3))
-                        .finished();
-
+            direction_ * radar_velocity_in_radar_frame;
         const double error =
             evaluated_radial_velocity - measured_radial_velocity_;
         return (gtsam::Vector(1) << error).finished();
