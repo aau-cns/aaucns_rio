@@ -301,8 +301,10 @@ void RIO::initializeCovariance()
     // added to the state and covariance by augmentation.
     Eigen::Matrix<double, State::kNBaseMultiWindowState, 1> imu_cov_init;
 
+    const double var_gyro_bias =
+        parameters_.init_sigma_gyro_bias_ * parameters_.init_sigma_gyro_bias_;
     imu_cov_init << 0.0011, 0.0011, 0.0011, 0.0011, 0.0011, 0.0011, 0.0011,
-        0.01, 0.01, 0.01, 0.01, 0.01, 0.5, 0.5, 0.5,
+        0.01, 0.01, var_gyro_bias, var_gyro_bias, var_gyro_bias, 0.5, 0.5, 0.5,
         /*calib*/ 0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001;
 
     states_[state_index_].P_ = imu_cov_init.asDiagonal();
@@ -397,6 +399,12 @@ void RIO::initializeStateFromConfig(const std::string& config_file)
     if (config["ransac_seed"])
     {
         parameters_.ransac_seed_ = config["ransac_seed"].as<unsigned int>();
+    }
+    // Optional initial gyro bias uncertainty (EKF).
+    if (config["init_sigma_gyro_bias"])
+    {
+        parameters_.init_sigma_gyro_bias_ =
+            config["init_sigma_gyro_bias"].as<double>();
     }
 }
 

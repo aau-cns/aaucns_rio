@@ -42,6 +42,12 @@ class Parameters
     double ransac_inlier_threshold_ = 0.15;
     int ransac_n_iterations_ = 17;
     unsigned int ransac_seed_ = 42;
+    // EKF: standard deviation [rad/s] of the initial gyro bias (diagonal
+    // initial covariance) - optional in the config file. The z bias is
+    // barely observable from the radar, so a large value lets the first
+    // updates push it far off, after which the heading drifts (0.1 rad/s
+    // gave 4.4 m mean ATE on the awr bags, 0.001 rad/s 0.73 m).
+    double init_sigma_gyro_bias_ = 0.001;
 };
 
 }  // namespace aaucns_rio

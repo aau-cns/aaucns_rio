@@ -60,3 +60,6 @@ noise_pf_z: 0.1
 ransac_inlier_threshold: 0.15
 ransac_n_iterations: 17
 ransac_seed: 42
+# EKF: standard deviation [rad/s] of the initial gyro bias (optional,
+# default 0.001). Large values let the barely observable z bias run off.
+init_sigma_gyro_bias: 0.001
