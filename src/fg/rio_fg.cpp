@@ -259,18 +259,31 @@ void RIOFg::processPC2(const sensor_msgs::PointCloud2ConstPtr& msg)
             {
                 // Data slot `i` holds the scan taken at the END of IMU
                 // factor `i` (X(i) -> X(i + 1)), i.e. at pose `i + 1`.
-                const RadialVelocityFactor radial_velocity_factor(
-                    X(i + 1), V(i + 1), B(i + 1),
+                const double measured_radial_velocity =
                     velocity_factor_data_horizon_[i].velocities_and_points_.row(
-                        j)(0),
+                        j)(0);
+                const Eigen::Vector3d radar_point =
                     velocity_factor_data_horizon_[i]
                         .velocities_and_points_.row(j)
-                        .tail(3),
-                    radar_imu_transform_, velocity_factor_data_horizon_[i].w_m_,
-                    velocity_robust_noise);
-                const auto factor_ptr =
-                    std::make_shared<RadialVelocityFactor>(
-                        radial_velocity_factor);
+                        .tail(3)
+                        .transpose();
+                gtsam::NonlinearFactor::shared_ptr factor_ptr;
+                if (estimate_radar_extrinsics_)
+                {
+                    factor_ptr = std::make_shared<RadialVelocityExtrinsicFactor>(
+                        X(i + 1), V(i + 1), B(i + 1), kExtrinsicsKey,
+                        measured_radial_velocity, radar_point,
+                        velocity_factor_data_horizon_[i].w_m_,
+                        velocity_robust_noise);
+                }
+                else
+                {
+                    factor_ptr = std::make_shared<RadialVelocityFactor>(
+                        X(i + 1), V(i + 1), B(i + 1), measured_radial_velocity,
+                        radar_point, radar_imu_transform_,
+                        velocity_factor_data_horizon_[i].w_m_,
+                        velocity_robust_noise);
+                }
                 graph_.push_back(factor_ptr);
                 if (i == 0)
                 {
@@ -284,6 +297,31 @@ void RIOFg::processPC2(const sensor_msgs::PointCloud2ConstPtr& msg)
         values_.insert(V(poses_in_window_), initial_state.v());
         values_.insert(B(poses_in_window_), initial_imu_bias_);
 
+        if (estimate_radar_extrinsics_)
+        {
+            if (!values_.exists(kExtrinsicsKey))
+            {
+                values_.insert(kExtrinsicsKey, radar_imu_transform_);
+            }
+            // Prior at the configured calibration. While the window fills up
+            // the graph is rebuilt every scan, so the prior is added every
+            // scan; at the first marginalization it is folded into the
+            // marginal prior, which carries it from then on.
+            if (!extrinsics_prior_in_marginal_prior_)
+            {
+                const auto prior =
+                    std::make_shared<gtsam::PriorFactor<gtsam::Pose3>>(
+                        kExtrinsicsKey, calibrated_radar_imu_transform_,
+                        extrinsics_prior_noise_);
+                graph_.push_back(prior);
+                if (poses_in_window_ == ConfigFg::kNPosesInWindow)
+                {
+                    oldest_slot_factors_.push_back(prior);
+                    extrinsics_prior_in_marginal_prior_ = true;
+                }
+            }
+        }
+
         // ----------------Solve----------------
         // graph_.print("\nFactor Graph:\n");
         gtsam::LevenbergMarquardtParams params =
@@ -292,6 +330,31 @@ void RIOFg::processPC2(const sensor_msgs::PointCloud2ConstPtr& msg)
         gtsam::LevenbergMarquardtOptimizer optimizer_lm(graph_, values_,
                                                         params);
         const gtsam::Values solution = optimizer_lm.optimize();
+        if (estimate_radar_extrinsics_)
+        {
+            // Also used by the trail and persistent feature factors and the
+            // trail point prediction of the next scan.
+            radar_imu_transform_ = solution.at<gtsam::Pose3>(kExtrinsicsKey);
+            if (++scans_processed_ % 500 == 0)
+            {
+                const gtsam::Pose3 delta =
+                    calibrated_radar_imu_transform_.between(
+                        radar_imu_transform_);
+                const gtsam::Quaternion q =
+                    radar_imu_transform_.rotation().toQuaternion();
+                const gtsam::Point3& t = radar_imu_transform_.translation();
+                ROS_INFO_STREAM(
+                    "[extrinsics] scan "
+                    << scans_processed_ << ": rotation "
+                    << delta.rotation().axisAngle().second * 180.0 / M_PI
+                    << " deg (axis "
+                    << delta.rotation().axisAngle().first.point3().transpose()
+                    << "), translation " << delta.translation().transpose()
+                    << " m from the calibration; q_ri (w x y z) " << q.w()
+                    << " " << q.x() << " " << q.y() << " " << q.z()
+                    << ", p_ri " << t.transpose());
+            }
+        }
 
         initial_pose_ = solution.at<gtsam::Pose3>(X(poses_in_window_));
         initial_velocity_ = solution.at<gtsam::Vector3>(V(poses_in_window_));
@@ -337,6 +400,11 @@ void RIOFg::marginalize()
 
 void RIOFg::initializeSolution()
 {
+    if (estimate_radar_extrinsics_ && previous_solution_.exists(kExtrinsicsKey))
+    {
+        values_.insert(kExtrinsicsKey,
+                       previous_solution_.at<gtsam::Pose3>(kExtrinsicsKey));
+    }
     if (poses_in_window_ == ConfigFg::kNPosesInWindow)
     {
         for (int i = 0; i < poses_in_window_; ++i)
@@ -640,9 +708,14 @@ void RIOFg::initializeStateFromConfig(const std::string& config_file)
         gtsam::Vector3(config["vx"].as<double>(), config["vy"].as<double>(),
                        config["vz"].as<double>());
     initial_state_ = gtsam::NavState(initial_pose_, initial_velocity_);
-    // Set initial biases to zero.
+    // Initial IMU biases (e.g. the gyro bias measured while at rest at the
+    // start); accelerometer first, as in gtsam::imuBias::ConstantBias.
     initial_imu_bias_ = gtsam::imuBias::ConstantBias(
-        (gtsam::Vector(6) << 0, 0, 0, 0, 0, 0).finished());
+        (gtsam::Vector(6) << config["b_ax"].as<double>(),
+         config["b_ay"].as<double>(), config["b_az"].as<double>(),
+         config["b_wx"].as<double>(), config["b_wy"].as<double>(),
+         config["b_wz"].as<double>())
+            .finished());
 
     // Extrinsic calibration parameters.
     radar_imu_transform_ = gtsam::Pose3(
@@ -651,6 +724,26 @@ void RIOFg::initializeStateFromConfig(const std::string& config_file)
         gtsam::Point3(config["p_rix"].as<double>(),
                       config["p_riy"].as<double>(),
                       config["p_riz"].as<double>()));
+
+    // Online radar-IMU calibration (optional): the configured extrinsics
+    // are the initial value and the mean of the prior.
+    calibrated_radar_imu_transform_ = radar_imu_transform_;
+    estimate_radar_extrinsics_ = config["estimate_radar_extrinsics"] &&
+                                 config["estimate_radar_extrinsics"].as<bool>();
+    const double extrinsics_sigma_rotation =
+        config["extrinsics_prior_sigma_rotation"]
+            ? config["extrinsics_prior_sigma_rotation"].as<double>()
+            : 0.05;  // rad
+    const double extrinsics_sigma_translation =
+        config["extrinsics_prior_sigma_translation"]
+            ? config["extrinsics_prior_sigma_translation"].as<double>()
+            : 0.01;  // m
+    extrinsics_prior_noise_ = gtsam::noiseModel::Diagonal::Sigmas(
+        (gtsam::Vector(6) << extrinsics_sigma_rotation,
+         extrinsics_sigma_rotation, extrinsics_sigma_rotation,
+         extrinsics_sigma_translation, extrinsics_sigma_translation,
+         extrinsics_sigma_translation)
+            .finished());
 
     most_recent_updated_state_ = FilterStateFactory::createState(
         initial_state_, initial_state_, IMUMeasurement(), initial_imu_bias_,
@@ -681,8 +774,22 @@ void RIOFg::initializeStateFromConfig(const std::string& config_file)
             .finished());  // rad,rad,rad,m, m, m
     prior_velocity_noise_ = gtsam::noiseModel::Diagonal::Sigmas(
         (gtsam::Vector(3) << 0.01, 0.01, 0.01).finished());  // m/s
+    // Prior on the initial biases [m/s^2, rad/s]. A tight gyro prior keeps
+    // a measured initial gyro bias: the z bias is barely observable from
+    // the radar and otherwise drifts, and the heading with it.
+    const double prior_sigma_acc_bias =
+        config["prior_sigma_acc_bias"]
+            ? config["prior_sigma_acc_bias"].as<double>()
+            : 0.3;
+    const double prior_sigma_gyro_bias =
+        config["prior_sigma_gyro_bias"]
+            ? config["prior_sigma_gyro_bias"].as<double>()
+            : 0.005;
     prior_bias_noise_ = gtsam::noiseModel::Isotropic::Sigmas(
-        (gtsam::Vector(6) << 0.3, 0.3, 0.3, 0.005, 0.005, 0.005).finished());
+        (gtsam::Vector(6) << prior_sigma_acc_bias, prior_sigma_acc_bias,
+         prior_sigma_acc_bias, prior_sigma_gyro_bias, prior_sigma_gyro_bias,
+         prior_sigma_gyro_bias)
+            .finished());
     prior_pf_noise_ = gtsam::noiseModel::Diagonal::Sigmas(
         (gtsam::Vector(3) << config["noise_pf_x"].as<double>(),
          config["noise_pf_y"].as<double>(),

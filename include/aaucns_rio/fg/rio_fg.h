@@ -121,6 +121,18 @@ class RIOFg
     gtsam::noiseModel::Gaussian::shared_ptr prior_bias_noise_;
     gtsam::noiseModel::Gaussian::shared_ptr prior_pf_noise_;
     gtsam::Pose3 radar_imu_transform_;
+    // Online radar-IMU calibration: the extrinsics (radar pose in the IMU
+    // frame) are a variable of the graph, constrained by the radial velocity
+    // factors and a prior at the configured calibration. The prior is added
+    // with the other priors while the window fills up and folded into the
+    // marginal prior at the first marginalization, which carries the
+    // extrinsics from then on.
+    static constexpr gtsam::Key kExtrinsicsKey = gtsam::Key('e') << 56;
+    bool estimate_radar_extrinsics_ = false;
+    bool extrinsics_prior_in_marginal_prior_ = false;
+    gtsam::Pose3 calibrated_radar_imu_transform_;
+    gtsam::noiseModel::Diagonal::shared_ptr extrinsics_prior_noise_;
+    long scans_processed_ = 0;
     gtsam::Vector noise_model_bias_;
     gtsam::NonlinearFactorGraph graph_;
     // Measurement factors of the oldest horizon data slot (they constrain

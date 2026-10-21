@@ -231,6 +231,14 @@ target_link_libraries(${PROJECT_NAME}_fg_replay_node
   gtsam
 )
 
+# Jacobian check of the online radar-IMU calibration factor.
+add_executable(${PROJECT_NAME}_test_radial_velocity_extrinsic_factor
+  test/test_radial_velocity_extrinsic_factor.cpp)
+target_link_libraries(${PROJECT_NAME}_test_radial_velocity_extrinsic_factor
+  ${catkin_LIBRARIES}
+  gtsam
+)
+
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above

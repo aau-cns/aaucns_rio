@@ -95,6 +95,12 @@ gtsam::FastVector<gtsam::Key> Marginalization::sortKeys(
     });
 
     nav_states_sorted.insert(nav_states_sorted.end(), p.begin(), p.end());
+
+    // Radar-IMU extrinsics (online calibration), kept in the prior.
+    gtsam::FastVector<gtsam::Key> e;
+    std::copy_if(set_to_sort.begin(), set_to_sort.end(), std::back_inserter(e),
+                 [](const auto key) { return gtsam::symbolChr(key) == 'e'; });
+    nav_states_sorted.insert(nav_states_sorted.end(), e.begin(), e.end());
     return nav_states_sorted;
 }
 

@@ -124,6 +124,96 @@ class RadialVelocityFactor
     }
 };
 
+// The same measurement with the radar-IMU extrinsics as a variable (pose of
+// the radar in the IMU frame, key E) for estimating them online (self-
+// calibration). Keys: pose, velocity, bias, extrinsics.
+class RadialVelocityExtrinsicFactor
+    : public gtsam::NoiseModelFactorN<gtsam::Pose3, gtsam::Vector3,
+                                      gtsam::imuBias::ConstantBias,
+                                      gtsam::Pose3>
+{
+    double measured_radial_velocity_;
+    Eigen::Vector3d w_m_;
+    // Unit direction to the radar point (row vector).
+    Eigen::Matrix<double, 1, 3> direction_;
+
+   public:
+    RadialVelocityExtrinsicFactor(const gtsam::Key pose,
+                                  const gtsam::Key velocity,
+                                  const gtsam::Key bias,
+                                  const gtsam::Key extrinsics,
+                                  const double measured_radial_velocity,
+                                  const Eigen::Vector3d& radar_point,
+                                  const Eigen::Vector3d& w_m,
+                                  const gtsam::SharedNoiseModel& model)
+        : gtsam::NoiseModelFactorN<gtsam::Pose3, gtsam::Vector3,
+                                   gtsam::imuBias::ConstantBias, gtsam::Pose3>(
+              model, pose, velocity, bias, extrinsics),
+          measured_radial_velocity_(measured_radial_velocity),
+          w_m_(w_m),
+          direction_(radar_point.transpose().eval() / radar_point.norm())
+    {
+    }
+
+    gtsam::Vector evaluateError(
+        const gtsam::Pose3& p, const gtsam::Vector3& v,
+        const gtsam::imuBias::ConstantBias& b, const gtsam::Pose3& T_imu_radar,
+        gtsam::OptionalMatrixType H1 = static_cast<gtsam::Matrix*>(nullptr),
+        gtsam::OptionalMatrixType H2 = static_cast<gtsam::Matrix*>(nullptr),
+        gtsam::OptionalMatrixType H3 = static_cast<gtsam::Matrix*>(nullptr),
+        gtsam::OptionalMatrixType H4 =
+            static_cast<gtsam::Matrix*>(nullptr)) const override
+    {
+        const Eigen::Matrix3d R_T = p.rotation().matrix().transpose();
+        const Eigen::Matrix3d R_ri = T_imu_radar.rotation().matrix();
+        const Eigen::Matrix3d R_ri_T = R_ri.transpose();
+        const Eigen::Vector3d p_ri = T_imu_radar.translation();
+        const Eigen::Vector3d w = w_m_ - b.gyroscope();
+        // Velocity of the radar in the body frame and in the radar frame.
+        const Eigen::Vector3d u =
+            R_T * v + util::getSkewSymmetricMat(w) * p_ri;
+        const Eigen::Vector3d v_radar = R_ri_T * u;
+        if (H1 || H2 || H3 || H4)
+        {
+            const Eigen::Matrix<double, 1, 3> zero =
+                Eigen::Matrix<double, 1, 3>::Zero();
+            const Eigen::Matrix<double, 1, 3> d_R = direction_ * R_ri_T;
+            if (H1)
+            {
+                // Orientation (position does not enter the model).
+                const Eigen::Vector3d to_skew = R_T * v;
+                (*H1) = (gtsam::Matrix(1, 6)
+                             << d_R * util::getSkewSymmetricMat(to_skew),
+                         zero)
+                            .finished();
+            }
+            if (H2)
+            {
+                (*H2) = d_R * R_T;
+            }
+            if (H3)
+            {
+                // Gyro bias (the accelerometer bias does not enter).
+                (*H3) = (gtsam::Matrix(1, 6)
+                             << zero, d_R * util::getSkewSymmetricMat(p_ri))
+                            .finished();
+            }
+            if (H4)
+            {
+                // Pose3 retraction: R Exp(dtheta), t + R dt.
+                (*H4) =
+                    (gtsam::Matrix(1, 6)
+                         << direction_ * util::getSkewSymmetricMat(v_radar),
+                     d_R * util::getSkewSymmetricMat(w) * R_ri)
+                        .finished();
+            }
+        }
+        const double error =
+            direction_.dot(v_radar.transpose()) - measured_radial_velocity_;
+        return (gtsam::Vector(1) << error).finished();
+    }
+};
+
 }  // namespace aaucns_rio
 
 #endif /* _RADAR_VELOCITY_FACTOR_H_ */

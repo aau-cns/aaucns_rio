@@ -35,11 +35,12 @@ int main(int argc, char **argv)
         {"pose", "/pose"},
         // Input.
         {"imu", argc > 3 ? argv[3] : "/mavros/imu/data_raw"},
-        {"gt_pose", "/twins_cns4/vrpn_client/raw_pose"},
-        {"pc2", "/ti_mmwave/radar_scan_pcl"}};
+        {"gt_pose", argc > 5 ? argv[5] : "/twins_cns4/vrpn_client/raw_pose"},
+        {"pc2", argc > 4 ? argv[4] : "/ti_mmwave/radar_scan_pcl"}};
     // Make sure the bagfile is inside ~/.ros folder wherefrom the binary is
     // executed.
-    // Optional CLI overrides: <input_bag> [config_file] [imu_topic].
+    // Optional CLI overrides:
+    // <input_bag> [config_file] [imu_topic] [pc2_topic] [gt_pose_topic].
     const std::string input_bagfile = argc > 1 ? argv[1] : "awr_7.bag";
     const std::string config_file = argc > 2 ? argv[2] : "config.yaml";
     aaucns_rio::RIOFgReplay rio_fg_replay(config_file, topics_and_topic_names,
