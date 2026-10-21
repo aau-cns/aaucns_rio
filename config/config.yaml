@@ -29,6 +29,8 @@ noise_accbias: 0.0038
 noise_gyr: 0.0013
 noise_gyrbias: 0.00013
 noise_qwv: 0.0
+# EKF radar-IMU calibration random walk (continuous noise densities;
+# 0 keeps the calibration constant apart from the measurement updates).
 noise_qri: 0.0
 noise_pri: 0.0
 # Distance to feature.
@@ -63,3 +65,7 @@ ransac_seed: 42
 # EKF: standard deviation [rad/s] of the initial gyro bias (optional,
 # default 0.001). Large values let the barely observable z bias run off.
 init_sigma_gyro_bias: 0.001
+# EKF: standard deviations of the initial radar-IMU calibration
+# (translation [m], rotation [rad]; optional).
+init_sigma_calib_translation: 0.0031623
+init_sigma_calib_rotation: 0.0031623

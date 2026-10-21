@@ -195,13 +195,16 @@ void StatePredictor::predictProcessCovariance(const double dt,
     Qd_.block(0, 0, State::kNImuState, State::kNImuState) =
         Qd.block(0, 0, State::kNImuState, State::kNImuState);
 
-    Eigen::Matrix<double, 6, 6> calib_noise;
-    calib_noise.setZero();
-    Eigen::Matrix<double, 6, 1> diagonal;
-    diagonal << 0.00000001, 0.00000001, 0.00000001, 0.00000001, 0.00000001,
-        0.00000001;
-    calib_noise.diagonal() = diagonal;
-    Qd_.block(State::kNImuState, State::kNImuState, 6, 6) = calib_noise;
+    // Radar-IMU calibration (p_ri, q_ri) as random walks with the configured
+    // continuous noise densities (`noise_pri`, `noise_qri`; zero keeps the
+    // calibration constant apart from the measurement updates).
+    Eigen::Matrix<double, 6, 1> calib_noise;
+    calib_noise << Eigen::Vector3d::Constant(parameters.noise_pri_ *
+                                             parameters.noise_pri_ * dt),
+        Eigen::Vector3d::Constant(parameters.noise_qri_ * parameters.noise_qri_ *
+                                  dt);
+    Qd_.block(State::kNImuState, State::kNImuState, 6, 6) =
+        calib_noise.asDiagonal();
 
     current_state.P_ = Fd_ * previous_state.P_ * Fd_.transpose() + Qd_;
 }

@@ -303,9 +303,16 @@ void RIO::initializeCovariance()
 
     const double var_gyro_bias =
         parameters_.init_sigma_gyro_bias_ * parameters_.init_sigma_gyro_bias_;
+    const double var_calib_translation =
+        parameters_.init_sigma_calib_translation_ *
+        parameters_.init_sigma_calib_translation_;
+    const double var_calib_rotation = parameters_.init_sigma_calib_rotation_ *
+                                      parameters_.init_sigma_calib_rotation_;
     imu_cov_init << 0.0011, 0.0011, 0.0011, 0.0011, 0.0011, 0.0011, 0.0011,
         0.01, 0.01, var_gyro_bias, var_gyro_bias, var_gyro_bias, 0.5, 0.5, 0.5,
-        /*calib*/ 0.00001, 0.00001, 0.00001, 0.00001, 0.00001, 0.00001;
+        /*calib*/ var_calib_translation, var_calib_translation,
+        var_calib_translation, var_calib_rotation, var_calib_rotation,
+        var_calib_rotation;
 
     states_[state_index_].P_ = imu_cov_init.asDiagonal();
 }
@@ -405,6 +412,17 @@ void RIO::initializeStateFromConfig(const std::string& config_file)
     {
         parameters_.init_sigma_gyro_bias_ =
             config["init_sigma_gyro_bias"].as<double>();
+    }
+    // Optional initial radar-IMU calibration uncertainty (EKF).
+    if (config["init_sigma_calib_translation"])
+    {
+        parameters_.init_sigma_calib_translation_ =
+            config["init_sigma_calib_translation"].as<double>();
+    }
+    if (config["init_sigma_calib_rotation"])
+    {
+        parameters_.init_sigma_calib_rotation_ =
+            config["init_sigma_calib_rotation"].as<double>();
     }
 }
 

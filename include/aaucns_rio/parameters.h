@@ -48,6 +48,10 @@ class Parameters
     // updates push it far off, after which the heading drifts (0.1 rad/s
     // gave 4.4 m mean ATE on the awr bags, 0.001 rad/s 0.73 m).
     double init_sigma_gyro_bias_ = 0.001;
+    // EKF: standard deviations of the initial radar-IMU calibration
+    // (translation [m], rotation [rad]) - optional in the config file.
+    double init_sigma_calib_translation_ = 0.0031623;
+    double init_sigma_calib_rotation_ = 0.0031623;
 };
 
 }  // namespace aaucns_rio
