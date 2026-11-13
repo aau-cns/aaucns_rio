@@ -65,6 +65,12 @@ ransac_seed: 42
 # EKF: standard deviation [rad/s] of the initial gyro bias (optional,
 # default 0.001). Large values let the barely observable z bias run off.
 init_sigma_gyro_bias: 0.001
+# FG: standard deviation [rad/s] of the prior on the initial gyro bias and
+# gyro bias random walk (continuous; optional, defaults 0.005 and
+# noise_gyrbias). The z bias is barely observable from the radar; with a
+# loose prior and random walk it is pulled away and the heading drifts.
+prior_sigma_gyro_bias: 0.0005
+fg_noise_gyrbias: 0.00001
 # EKF: standard deviations of the initial radar-IMU calibration
 # (translation [m], rotation [rad]; optional).
 init_sigma_calib_translation: 0.0031623

@@ -481,27 +481,11 @@ void RIOFg::initializePFsValues()
                         pf_factor_data_horizon_[j]
                             .most_recent_updated_state_.persistent_features_[i]
                             .id)));
-                // Here check if it has not been included in the marginalized
-                // prior. That is, if it had been connected to the x0 and also
-                // other poses.
-                if (!marginalization_.isPFKeyInPrior(P(
-                        pf_factor_data_horizon_[j]
-                            .most_recent_updated_state_.persistent_features_[i]
-                            .id)))
-                {
-                    gtsam::PriorFactor<gtsam::Point3> prior_pf_factor(
-                        P(pf_factor_data_horizon_[j]
-                              .most_recent_updated_state_
-                              .persistent_features_[i]
-                              .id),
-                        previous_solution_.at<gtsam::Point3>(
-                            P(pf_factor_data_horizon_[j]
-                                  .most_recent_updated_state_
-                                  .persistent_features_[i]
-                                  .id)),
-                        prior_pf_noise_);
-                    graph_.add(prior_pf_factor);
-                }
+                // No prior here: the previous estimate already contains the
+                // range measurements of the window, which are added to the
+                // graph again, so a prior at it would count them twice. The
+                // PF is constrained by its range factors and, once its oldest
+                // observations have left the window, by the marginal prior.
                 trail_.initializeId(
                     pf_factor_data_horizon_[j]
                         .most_recent_updated_state_.persistent_features_[i]
@@ -764,9 +748,13 @@ void RIOFg::initializeStateFromConfig(const std::string& config_file)
     preintegration_params_->biasAccCovariance =
         gtsam::I_3x3 * pow(config["noise_accbias"].as<double>(), 2);
     ;  // acc bias in continuous
+    // Gyro bias random walk of the factor graph (continuous). Optional
+    // `fg_noise_gyrbias` overrides the value shared with the EKF.
+    const double noise_gyrbias = config["fg_noise_gyrbias"]
+                                     ? config["fg_noise_gyrbias"].as<double>()
+                                     : config["noise_gyrbias"].as<double>();
     preintegration_params_->biasOmegaCovariance =
-        gtsam::I_3x3 * pow(config["noise_gyrbias"].as<double>(), 2);
-    ;  // gyro bias in continuous
+        gtsam::I_3x3 * pow(noise_gyrbias, 2);
     preintegration_params_->biasAccOmegaInt = gtsam::I_6x6 * 1e-5;
 
     prior_pose_noise_ = gtsam::noiseModel::Diagonal::Sigmas(
